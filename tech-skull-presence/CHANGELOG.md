@@ -2,6 +2,17 @@
 
 All notable changes to this add-on. Versions follow the `version:` field in `config.yaml`.
 
+## 0.3.1 — Readable zone labels + in-zone target highlight
+
+- **Fix**: zone labels are now always drawn **upright and centred**, regardless of
+  device rotation or Mirror X. Previously they inherited the zone rotation and
+  appeared upside-down/flipped.
+- **New (calibration)**: a live target is **recoloured rose and enlarged when it
+  falls inside any drawn zone**, so you can verify a zone covers the right area
+  without the target vanishing. Note: in **Filter** mode the radar hides targets
+  inside the zone — keep Zone Mode on **Detection/Disabled** while calibrating,
+  then switch to Filter for production.
+
 ## 0.3.0 — Entry/Exit zones (assumed presence) for LD2450
 
 DIY entry/exit detection implemented in the LD2450 firmware (no native support).

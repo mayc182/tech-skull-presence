@@ -1572,7 +1572,19 @@ export const ZoneEditorPage: React.FC<ZoneEditorPageProps> = ({
                   <g style={{ pointerEvents: 'none' }}>
                     {targetPositions.map((target) => {
                       const colorIndex = (target.id - 1) % targetColors.length;
-                      const color = targetColors[colorIndex];
+                      const baseColor = targetColors[colorIndex];
+                      // Calibration aid: if the target is inside any drawn zone,
+                      // recolour it (rose) instead of using its per-target colour.
+                      // In Filter mode the radar would normally hide it; keep the
+                      // radar in Detection/Disabled while calibrating to see this.
+                      const insideZone = enabledZones.some(
+                        (z) =>
+                          target.x >= z.x &&
+                          target.x <= z.x + z.width &&
+                          target.y >= z.y &&
+                          target.y <= z.y + z.height
+                      );
+                      const color = insideZone ? { fill: '#f43f5e' } : baseColor;
                       const canvasPos = toCanvas({ x: target.x, y: target.y });
 
                       return (
@@ -1580,9 +1592,9 @@ export const ZoneEditorPage: React.FC<ZoneEditorPageProps> = ({
                           <circle
                             cx={canvasPos.x}
                             cy={canvasPos.y}
-                            r={12 * targetMarkerScale}
+                            r={(insideZone ? 14 : 12) * targetMarkerScale}
                             fill={color.fill}
-                            fillOpacity={0.3}
+                            fillOpacity={insideZone ? 0.45 : 0.3}
                             stroke={color.fill}
                             strokeWidth={2 * targetMarkerScale}
                           />

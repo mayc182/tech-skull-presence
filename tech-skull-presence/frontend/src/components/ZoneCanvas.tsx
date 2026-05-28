@@ -701,24 +701,32 @@ export const ZoneCanvas: React.FC<ZoneCanvasProps> = ({
                 onPointerUp={forwardCanvasPointerRelease}
                 onPointerCancel={forwardCanvasPointerRelease}
               />
-              {showZoneLabels && (
-                <text
-                  x={canvasWidth / 2}
-                  y={20 * effectiveZoneLabelScale}
-                  fill="white"
-                  fontSize={13 * effectiveZoneLabelScale}
-                  fontWeight="600"
-                  textAnchor="middle"
-                  pointerEvents="none"
-                  transform={`translate(${canvasTopLeft.x}, ${canvasTopLeft.y}) rotate(${rotationDeg})`}
-                  style={{
-                    filter: 'drop-shadow(0 1px 2px rgb(0 0 0 / 0.8))',
-                    textShadow: '0 1px 3px rgba(0,0,0,0.8)'
-                  }}
-                >
-                  {zoneLabels?.[zone.id] || zone.label || zone.id}
-                </text>
-              )}
+              {showZoneLabels && (() => {
+                // Draw the label UPRIGHT at the zone's centre, regardless of the
+                // zone/device rotation or X-mirror. (Previously it inherited
+                // rotate(rotationDeg), so it appeared upside-down/flipped.)
+                const r = (rotationDeg * Math.PI) / 180;
+                const lx = canvasTopLeft.x + (canvasWidth / 2) * Math.cos(r) - (canvasHeight / 2) * Math.sin(r);
+                const ly = canvasTopLeft.y + (canvasWidth / 2) * Math.sin(r) + (canvasHeight / 2) * Math.cos(r);
+                return (
+                  <text
+                    x={lx}
+                    y={ly}
+                    fill="white"
+                    fontSize={13 * effectiveZoneLabelScale}
+                    fontWeight="600"
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    pointerEvents="none"
+                    style={{
+                      filter: 'drop-shadow(0 1px 2px rgb(0 0 0 / 0.8))',
+                      textShadow: '0 1px 3px rgba(0,0,0,0.8)'
+                    }}
+                  >
+                    {zoneLabels?.[zone.id] || zone.label || zone.id}
+                  </text>
+                );
+              })()}
               {/* Resize handles */}
               {handles.map((handle) => (
                 <circle
