@@ -2,6 +2,19 @@
 
 All notable changes to this add-on. Versions follow the `version:` field in `config.yaml`.
 
+## 0.2.2 — Mirror X (flipped-mount support)
+
+- **New: "Mirror X" toggle** in the Zone Editor for tracking radars (LD2450)
+  mounted upside-down, where left/right come out inverted. No firmware re-flash:
+  - The flag is stored per-device in the mapping (`mirrorX`).
+  - Backend negates target **X and angle** on the live feed, and negates zone **X**
+    on both read and write — so zones drawn in the editor land in the correct
+    real-world position and Home Assistant presence/occupancy stays accurate.
+  - Endpoints: `GET`/`PUT /api/device-mappings/:deviceId/mirror-x`.
+  - The entity write endpoint already supports the needed domains.
+- How to use: in the Zone Editor, walk to your right and check target T1 moves
+  right on the plan; if it's mirrored, enable **Mirror X**.
+
 ## 0.2.1 — Zone exclusion (LD2450 Filter mode)
 
 - **New**: a **Zone Mode** selector in the Zone Editor toolbar for HP-Lite (LD2450),

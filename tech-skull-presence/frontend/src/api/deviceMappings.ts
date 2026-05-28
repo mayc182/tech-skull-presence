@@ -367,3 +367,40 @@ export const saveZoneLabels = async (
     return null;
   }
 };
+
+/**
+ * Get the X-axis mirror flag for a device (for radars mounted flipped).
+ */
+export const getMirrorX = async (deviceId: string): Promise<boolean> => {
+  try {
+    const res = await fetch(ingressAware(`api/device-mappings/${deviceId}/mirror-x`));
+    if (res.status === 404) return false;
+    const data = await handle<{ mirrorX: boolean }>(res);
+    return data.mirrorX === true;
+  } catch (error) {
+    console.error('Failed to fetch mirror-x:', error);
+    return false;
+  }
+};
+
+/**
+ * Set the X-axis mirror flag for a device. Returns the new value, or null on failure.
+ */
+export const setMirrorX = async (deviceId: string, mirrorX: boolean): Promise<boolean | null> => {
+  try {
+    const res = await fetch(ingressAware(`api/device-mappings/${deviceId}/mirror-x`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mirrorX }),
+    });
+    if (res.status === 404) {
+      console.warn('Device mapping not found - cannot set mirror-x');
+      return null;
+    }
+    const data = await handle<{ mirrorX: boolean }>(res);
+    return data.mirrorX;
+  } catch (error) {
+    console.error('Failed to set mirror-x:', error);
+    return null;
+  }
+};

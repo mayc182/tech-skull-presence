@@ -38,6 +38,13 @@ export interface DeviceMapping {
   entityUnits?: Record<string, string>;
   /** Zone labels keyed by zone ID (e.g., "Zone 1" -> "Bed", "Exclusion 2" -> "Window") */
   zoneLabels?: Record<string, string>;
+  /**
+   * Mirror the X axis for this device. Use when the radar (e.g. LD2450) is
+   * physically mounted flipped, so left/right come out inverted. When true the
+   * add-on negates target X (and angle) on read and negates zone X on both read
+   * and write, keeping the on-device zones positioned correctly in the real world.
+   */
+  mirrorX?: boolean;
   /** Device firmware version (e.g., "1.4.1") - parsed from sw_version */
   firmwareVersion?: string;
   /** ESPHome version the device is running (e.g., "2025.11.2") - parsed from sw_version */

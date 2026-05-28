@@ -17,6 +17,19 @@ export interface DevicesRouterDependencies {
   profileLoader: DeviceProfileLoader;
 }
 
+/**
+ * Mirror a rectangular zone across the X axis (for devices mounted flipped).
+ * The left edge becomes -(right edge); width is unchanged. This is an
+ * involution, so the same transform is used on both read and write.
+ */
+const mirrorZoneX = <T extends { x: number; width: number }>(zone: T): T => ({
+  ...zone,
+  x: -(zone.x + zone.width),
+});
+
+const deviceMirrorX = (deviceId: string): boolean =>
+  deviceMappingStorage.getMapping(deviceId)?.mirrorX === true;
+
 export const createDevicesRouter = (deps: DevicesRouterDependencies): Router => {
   const router = Router();
   const { readTransport, writeClient, profileLoader } = deps;
@@ -617,7 +630,10 @@ export const createDevicesRouter = (deps: DevicesRouterDependencies): Router => 
     }
 
     try {
-      const zones = await zoneReader.readZones(zoneMap, entityNamePrefix as string, entityMappings, deviceId);
+      let zones = await zoneReader.readZones(zoneMap, entityNamePrefix as string, entityMappings, deviceId);
+      if (deviceMirrorX(deviceId)) {
+        zones = zones.map(mirrorZoneX);
+      }
       return res.json({ zones });
     } catch (error) {
       logger.error({ error }, 'Failed to read zones');
@@ -649,7 +665,8 @@ export const createDevicesRouter = (deps: DevicesRouterDependencies): Router => 
     }
 
     try {
-      const result = await zoneWriter.applyZones(zoneMap, zones, entityNamePrefix, entityMappings, deviceId);
+      const zonesToWrite = deviceMirrorX(deviceId) ? zones.map(mirrorZoneX) : zones;
+      const result = await zoneWriter.applyZones(zoneMap, zonesToWrite, entityNamePrefix, entityMappings, deviceId);
       return res.json({ ok: result.ok, warnings: result.failures });
     } catch (error) {
       logger.error({ error }, 'Failed to apply zones');

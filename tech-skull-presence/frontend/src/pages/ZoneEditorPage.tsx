@@ -22,6 +22,7 @@ import {
 } from '../components/CanvasLayout';
 import { DisplaySettingsControls } from '../components/DisplaySettingsControls';
 import { HPZoneModeControl } from '../components/HPZoneModeControl';
+import { HPMirrorXToggle } from '../components/HPMirrorXToggle';
 import { useDisplaySettings } from '../hooks/useDisplaySettings';
 import { useIsMobileCanvas } from '../hooks/useMediaQuery';
 import { useDeviceMappings } from '../contexts/DeviceMappingsContext';
@@ -1679,6 +1680,14 @@ export const ZoneEditorPage: React.FC<ZoneEditorPageProps> = ({
             {/* LD2450 zone mode (Detection / Filter-exclusion). HP-Lite only. */}
             {selectedRoom?.deviceId && zoneModeEntityId && (
               <HPZoneModeControl deviceId={selectedRoom.deviceId} zoneModeEntityId={zoneModeEntityId} />
+            )}
+
+            {/* X-axis mirror for radars mounted flipped. HP-Lite (LD2450). */}
+            {selectedRoom?.deviceId && zoneModeEntityId && (
+              <HPMirrorXToggle
+                deviceId={selectedRoom.deviceId}
+                onAfterChange={() => window.location.reload()}
+              />
             )}
 
           </div>

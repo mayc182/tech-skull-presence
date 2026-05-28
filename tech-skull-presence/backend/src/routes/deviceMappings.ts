@@ -543,6 +543,60 @@ export const createDeviceMappingsRouter = (deps?: DeviceMappingsRouterDependenci
   });
 
   /**
+   * GET /api/device-mappings/:deviceId/mirror-x
+   * Get the X-axis mirror flag for a device.
+   */
+  router.get('/:deviceId/mirror-x', (req, res) => {
+    const { deviceId } = req.params;
+    try {
+      const mapping = deviceMappingStorage.getMapping(deviceId);
+      if (!mapping) {
+        return res.status(404).json({ message: 'Device mapping not found', code: 'MAPPING_NOT_FOUND' });
+      }
+      return res.json({ mirrorX: mapping.mirrorX === true });
+    } catch (error) {
+      logger.error({ error, deviceId }, 'Failed to get mirror-x');
+      return res.status(500).json({ message: 'Failed to get mirror-x' });
+    }
+  });
+
+  /**
+   * PUT /api/device-mappings/:deviceId/mirror-x
+   * Set the X-axis mirror flag for a device. Body: { mirrorX: boolean }
+   */
+  router.put('/:deviceId/mirror-x', async (req, res) => {
+    const { deviceId } = req.params;
+    const { mirrorX } = req.body as { mirrorX?: boolean };
+
+    if (typeof mirrorX !== 'boolean') {
+      return res.status(400).json({ message: 'mirrorX boolean is required' });
+    }
+
+    try {
+      const existing = deviceMappingStorage.getMapping(deviceId);
+      if (!existing) {
+        return res.status(404).json({
+          message: 'Device mapping not found. Sync the device before changing orientation.',
+          code: 'MAPPING_NOT_FOUND',
+        });
+      }
+
+      const updated: DeviceMapping = {
+        ...existing,
+        mirrorX,
+        lastUpdated: new Date().toISOString(),
+      };
+      await deviceMappingStorage.saveMapping(updated);
+
+      logger.info({ deviceId, mirrorX }, 'Device X-mirror updated');
+      return res.json({ mirrorX });
+    } catch (error) {
+      logger.error({ error, deviceId }, 'Failed to update mirror-x');
+      return res.status(500).json({ message: 'Failed to update mirror-x' });
+    }
+  });
+
+  /**
    * POST /api/device-mappings/migrate
    * Trigger migration of all room entity mappings to device-level storage.
    */

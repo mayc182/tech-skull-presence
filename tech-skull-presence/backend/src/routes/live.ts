@@ -55,6 +55,8 @@ export function createLiveRouter(
       // Check if device has device-level mappings (preferred)
       const hasDeviceMapping = deviceMappingStorage.hasMapping(deviceId);
       const hasMappings = hasDeviceMapping || !!entityMappings;
+      // X-axis mirror for devices mounted flipped (negates target X + angle).
+      const mirrorX = deviceMappingStorage.getMapping(deviceId)?.mirrorX === true;
 
       // Log warning if no mappings found
       if (!hasMappings) {
@@ -272,7 +274,7 @@ export function createLiveRouter(
             if (!isNaN(x)) {
               // Convert to mm if unit is imperial
               x = convertToMm(x, xState.attributes?.unit_of_measurement as string | undefined);
-              target.x = x;
+              target.x = mirrorX ? -x : x;
             }
           }
 
@@ -306,6 +308,7 @@ export function createLiveRouter(
           if (angleState && !isUnavailableState(angleState.state)) {
             target.angle = parseFloat(angleState.state);
             if (isNaN(target.angle)) target.angle = null;
+            else if (mirrorX && target.angle !== null) target.angle = -target.angle;
           }
 
           const resolutionState = await getTargetState(i, 'resolution');

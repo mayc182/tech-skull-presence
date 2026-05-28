@@ -137,6 +137,14 @@ while the rest of the room keeps working normally.
 > "detect here, ignore there" in the same configuration. Use Filter to carve out
 > ignore-areas, or Detection to whitelist specific areas.
 
+#### Mirror X (flipped mounting)
+
+If the radar is mounted upside-down, left and right come out inverted. Walk to
+your **right** and watch target **T1** on the plan — if it moves left, enable the
+**Mirror X** toggle in the editor toolbar. The add-on then flips the X axis for
+both the live targets and the zone coordinates it reads/writes, so everything
+matches reality. **No firmware re-flash needed** — the flag is stored per-device.
+
 ### 7b. LD2410 (HP-mini / Saladeestar / Luz / Niños) — 1D distance bands
 
 The LD2410 reports **distance only** (not X/Y), so "zones" are distance ranges
