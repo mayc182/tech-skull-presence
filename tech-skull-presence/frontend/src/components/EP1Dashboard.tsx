@@ -90,6 +90,17 @@ export const EP1Dashboard: React.FC<EP1DashboardProps> = ({ roomId, room, liveSt
       ? '✓ Motion'
       : '✗ No Motion';
 
+  // Fit the detection canvas to the room outline (with margin) so the whole
+  // room is visible, instead of a fixed 25 m view that cut the walls off.
+  const fitRangeMm = (() => {
+    const pts = room.roomShell?.points;
+    if (!pts || pts.length < 2) return 8000;
+    const xs = pts.map((p) => Math.abs(p.x));
+    const ys = pts.map((p) => Math.abs(p.y));
+    const maxExtent = Math.max(...xs, ...ys);
+    return Math.max(4000, maxExtent * 2 * 1.15);
+  })();
+
   return (
     <div className="min-h-screen bg-slate-950">
       <div className="mx-auto max-w-7xl px-6 py-6">
@@ -117,7 +128,8 @@ export const EP1Dashboard: React.FC<EP1DashboardProps> = ({ roomId, room, liveSt
                 floorMaterial={room.floorMaterial}
                 devicePlacement={room.devicePlacement}
                 fieldOfViewDeg={120}
-                maxRangeMeters={25}
+                maxRangeMeters={6}
+                rangeMm={fitRangeMm}
                 furniture={room.furniture}
                 height={420}
                 renderOverlay={(params) => {
@@ -199,6 +211,8 @@ export const EP1Dashboard: React.FC<EP1DashboardProps> = ({ roomId, room, liveSt
                 </div>
               </div>
 
+              {/* mmWave card: only if the device actually exposes an mmWave entity */}
+              {liveState.mmwave !== undefined && (
               <div className={`rounded-xl border p-4 ${
                 mmwaveAvailability === 'unavailable'
                   ? 'border-amber-600/50 bg-amber-600/10'
@@ -217,7 +231,10 @@ export const EP1Dashboard: React.FC<EP1DashboardProps> = ({ roomId, room, liveSt
                   {mmwaveLabel}
                 </div>
               </div>
+              )}
 
+              {/* PIR card: only if the device actually exposes a PIR entity */}
+              {liveState.pir !== undefined && (
               <div className={`rounded-xl border p-4 ${
                 pirAvailability === 'unavailable'
                   ? 'border-amber-600/50 bg-amber-600/10'
@@ -236,6 +253,7 @@ export const EP1Dashboard: React.FC<EP1DashboardProps> = ({ roomId, room, liveSt
                   {pirLabel}
                 </div>
               </div>
+              )}
             </div>
 
             {/* Mini Charts */}
@@ -255,15 +273,17 @@ export const EP1Dashboard: React.FC<EP1DashboardProps> = ({ roomId, room, liveSt
 
           {/* Sidebar - Right Column */}
           <div className="space-y-6">
-            {/* Settings Helper */}
-            <EP1SettingsHelper
-              room={room}
-              config={config}
-              onModeChange={(newMode) => {
-                // TODO: Implement mode change API call
-                console.log('Mode change requested:', newMode);
-              }}
-            />
+            {/* Settings Helper — EP1 mmWave tuning; hidden on devices without an mmWave entity (HP LD2410) */}
+            {liveState.mmwave !== undefined && (
+              <EP1SettingsHelper
+                room={room}
+                config={config}
+                onModeChange={(newMode) => {
+                  // TODO: Implement mode change API call
+                  console.log('Mode change requested:', newMode);
+                }}
+              />
+            )}
 
             {/* Comfort Index */}
             <EP1ComfortPanel
@@ -272,12 +292,14 @@ export const EP1Dashboard: React.FC<EP1DashboardProps> = ({ roomId, room, liveSt
               entityUnits={entityUnits}
             />
 
-            {/* Sensor Comparison */}
-            <EP1SensorComparisonPanel
-              presence={liveState.presence ?? false}
-              mmwave={liveState.mmwave ?? false}
-              pir={liveState.pir ?? false}
-            />
+            {/* Sensor Comparison — needs mmWave/PIR; hidden on HP LD2410 */}
+            {liveState.mmwave !== undefined && (
+              <EP1SensorComparisonPanel
+                presence={liveState.presence ?? false}
+                mmwave={liveState.mmwave ?? false}
+                pir={liveState.pir ?? false}
+              />
+            )}
 
             {/* Today's Statistics */}
             <EP1StatsPanel

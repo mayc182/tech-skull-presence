@@ -42,7 +42,6 @@ export const HPControlsPanel: React.FC<HPControlsPanelProps> = ({
   deviceId,
   noDisturbEntityId,
   co2LedEntityId,
-  hasBuzzer,
 }) => {
   const [noDisturbOn, setNoDisturbOn] = useState<boolean | null>(null);
   const [ledOn, setLedOn] = useState<boolean | null>(null);
@@ -69,9 +68,11 @@ export const HPControlsPanel: React.FC<HPControlsPanelProps> = ({
   }, [noDisturbEntityId, co2LedEntityId]);
 
   // Discover buzzer melody buttons dynamically (their slugs are unpredictable
-  // because the firmware names them with emojis/accents).
+  // because the firmware names them with emojis/accents). We always probe — the
+  // section only renders if melody buttons are actually found — so it works even
+  // when the device was auto-matched to a non-buzzer profile (Saladeestar/Niños
+  // are indistinguishable by entities).
   useEffect(() => {
-    if (!hasBuzzer) return;
     let cancelled = false;
     (async () => {
       try {
@@ -91,7 +92,7 @@ export const HPControlsPanel: React.FC<HPControlsPanelProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [deviceId, hasBuzzer]);
+  }, [deviceId]);
 
   const toggle = useCallback(
     async (entityId: string, current: boolean | null, setter: (v: boolean) => void, key: string) => {
@@ -125,7 +126,7 @@ export const HPControlsPanel: React.FC<HPControlsPanelProps> = ({
     [deviceId]
   );
 
-  const hasAnything = noDisturbEntityId || co2LedEntityId || (hasBuzzer && melodies.length > 0);
+  const hasAnything = noDisturbEntityId || co2LedEntityId || melodies.length > 0;
   if (!hasAnything) return null;
 
   const Toggle: React.FC<{ label: string; on: boolean | null; onClick: () => void; busyKey: string; hint?: string }> = ({
@@ -190,7 +191,7 @@ export const HPControlsPanel: React.FC<HPControlsPanelProps> = ({
           />
         )}
 
-        {hasBuzzer && melodies.length > 0 && (
+        {melodies.length > 0 && (
           <div className="rounded-lg border border-slate-800 bg-slate-800/40 px-4 py-3">
             <div className="mb-2 text-sm font-medium text-white">Buzzer melody tester</div>
             <div className="flex flex-wrap gap-2">

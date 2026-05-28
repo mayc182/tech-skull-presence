@@ -2,6 +2,24 @@
 
 All notable changes to this add-on. Versions follow the `version:` field in `config.yaml`.
 
+## 0.4.3 — HP dashboard cleanup (buzzer, mmWave/PIR, fit, EP1 cruft)
+
+Adjusts the live dashboard so it reflects what HP LD2410 devices actually have:
+- **Buzzer melody tester** now always probes the device's melody buttons, so it
+  appears even when the device was auto-matched to the Saladeestar profile (which
+  is indistinguishable from Niños by entities). If your device has the melody
+  buttons, the tester shows.
+- **mmWave / PIR cards** are hidden when the device has no such entity (HP LD2410
+  has neither), instead of showing a misleading "Inactive / No Motion".
+- **EP1-only panels hidden** for HP: "Settings Recommendations / Current Mode"
+  (mmWave tuning that doesn't exist here) and "Sensor Comparison".
+- **Detection Visualization** now fits the room outline (was a fixed 25 m view
+  that cut the walls off) and uses the real 6 m radar range.
+
+> "Light --" on Niños is correct — only HP-Luz has the BH1750. CO2/temp/humidity
+> read fine. To get the buzzer tester, the device's melody test buttons must be
+> enabled in Home Assistant.
+
 ## 0.4.2 — Full radar settings for LD2410 profiles
 
 - The 4 LD2410 profiles now expose the complete radar settings so they appear in
