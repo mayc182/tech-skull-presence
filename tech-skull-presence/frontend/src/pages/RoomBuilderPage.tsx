@@ -65,6 +65,8 @@ export const RoomBuilderPage: React.FC<RoomBuilderPageProps> = ({
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [rangeMm, setRangeMm] = useState(15000);
   const [widthMm, setWidthMm] = useState(4000);
+  const [calibrating, setCalibrating] = useState(false);
+  const floorPlanInputRef = useRef<HTMLInputElement>(null);
   const [heightMm, setHeightMm] = useState(4000);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -185,6 +187,60 @@ export const RoomBuilderPage: React.FC<RoomBuilderPageProps> = ({
     const nextRoom: RoomConfig = { ...selectedRoom, devicePlacement: nextPlacement };
     setRooms((prev) => prev.map((r) => (r.id === selectedRoom.id ? nextRoom : r)));
   }, [selectedRoom]);
+
+  // ---- Floor-plan tracing template ----
+  const updateFloorPlan = useCallback((updates: Partial<import('../api/types').FloorPlan> | null) => {
+    if (!selectedRoom) return;
+    let nextFp: import('../api/types').FloorPlan | undefined;
+    if (updates === null) {
+      nextFp = undefined;
+    } else if (selectedRoom.floorPlan) {
+      nextFp = { ...selectedRoom.floorPlan, ...updates };
+    } else if (updates.dataUrl) {
+      nextFp = updates as import('../api/types').FloorPlan;
+    } else {
+      return;
+    }
+    setRooms((prev) => prev.map((r) => (r.id === selectedRoom.id ? { ...selectedRoom, floorPlan: nextFp } : r)));
+  }, [selectedRoom]);
+
+  const handleFloorPlanFile = useCallback((file: File) => {
+    if (!selectedRoom) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const img = new Image();
+      img.onload = () => {
+        // Initial scale: span the image across ~ the current view width; calibrate after.
+        const mmPerPx = rangeMm / Math.max(1, img.naturalWidth);
+        const wMm = img.naturalWidth * mmPerPx;
+        const hMm = img.naturalHeight * mmPerPx;
+        updateFloorPlan({
+          dataUrl,
+          imgWpx: img.naturalWidth,
+          imgHpx: img.naturalHeight,
+          mmPerPx,
+          offsetXmm: -wMm / 2,
+          offsetYmm: -hMm / 2,
+          opacity: 0.5,
+        });
+      };
+      img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+  }, [selectedRoom, rangeMm, updateFloorPlan]);
+
+  const handleFloorPlanCalibrate = useCallback((worldDistMm: number) => {
+    setCalibrating(false);
+    const fp = selectedRoom?.floorPlan;
+    if (!fp || worldDistMm <= 0) return;
+    const input = window.prompt('Distancia real entre los 2 puntos (en metros):', '1');
+    if (!input) return;
+    const meters = parseFloat(input.replace(',', '.'));
+    if (!Number.isFinite(meters) || meters <= 0) return;
+    const factor = (meters * 1000) / worldDistMm;
+    updateFloorPlan({ mmPerPx: fp.mmPerPx * factor });
+  }, [selectedRoom, updateFloorPlan]);
 
   const coveragePresets = selectedProfile?.coverage?.presets ?? null;
   const coveragePresetId = useMemo(() => {
@@ -1219,6 +1275,74 @@ export const RoomBuilderPage: React.FC<RoomBuilderPageProps> = ({
             setZoom((z) => Math.min(5, Math.max(0.1, z + delta)));
           }}
         >
+                {/* Floor-plan tracing template controls */}
+                <div className="absolute top-3 left-3 z-40 w-56 space-y-2 rounded-xl border border-slate-700/50 bg-slate-900/90 p-3 text-xs text-slate-200 shadow-lg backdrop-blur">
+                  <div className="font-semibold text-white">Floor plan</div>
+                  <input
+                    ref={floorPlanInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleFloorPlanFile(f);
+                      e.currentTarget.value = '';
+                    }}
+                  />
+                  {!selectedRoom.floorPlan ? (
+                    <button
+                      className="w-full rounded-md border border-slate-600 bg-slate-800 px-2 py-1.5 transition hover:border-aqua-500"
+                      onClick={() => floorPlanInputRef.current?.click()}
+                    >
+                      Upload image
+                    </button>
+                  ) : (
+                    <>
+                      <label className="block">
+                        Opacity {Math.round((selectedRoom.floorPlan.opacity ?? 0.5) * 100)}%
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          value={Math.round((selectedRoom.floorPlan.opacity ?? 0.5) * 100)}
+                          className="w-full"
+                          onChange={(e) => updateFloorPlan({ opacity: Number(e.target.value) / 100 })}
+                        />
+                      </label>
+                      <button
+                        className={`w-full rounded-md border px-2 py-1.5 transition ${
+                          calibrating
+                            ? 'border-emerald-500 bg-emerald-600/20 text-emerald-100'
+                            : 'border-slate-600 bg-slate-800 hover:border-aqua-500'
+                        }`}
+                        onClick={() => setCalibrating((v) => !v)}
+                      >
+                        {calibrating ? 'Click 2 points on the plan…' : 'Calibrate scale'}
+                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          className="flex-1 rounded-md border border-slate-600 bg-slate-800 px-2 py-1 transition hover:border-aqua-500"
+                          onClick={() => floorPlanInputRef.current?.click()}
+                        >
+                          Replace
+                        </button>
+                        <button
+                          className="flex-1 rounded-md border border-rose-600/60 px-2 py-1 text-rose-200 transition hover:bg-rose-500/10"
+                          onClick={() => {
+                            setCalibrating(false);
+                            updateFloorPlan(null);
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <p className="text-[10px] leading-snug text-slate-400">
+                        1 px = {selectedRoom.floorPlan.mmPerPx.toFixed(1)} mm. Calibrate by clicking two
+                        points a known distance apart, then enter the real metres.
+                      </p>
+                    </>
+                  )}
+                </div>
                 <RoomCanvas
                   points={selectedRoom.roomShell?.points ?? []}
                   onChange={handlePointsChange}
@@ -1245,6 +1369,9 @@ export const RoomBuilderPage: React.FC<RoomBuilderPageProps> = ({
                   onZoomChange={setZoom}
                   touchPanEnabled={!isDrawingWall && !isDoorPlacementMode}
                   displayUnits={displayUnits}
+                  floorPlan={selectedRoom.floorPlan ?? null}
+                  calibrating={calibrating}
+                  onCalibrate={handleFloorPlanCalibrate}
                   devicePlacement={
                     selectedRoom.devicePlacement ?? {
                       x: 0,

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { storage } from '../config/storage';
-import { DevicePlacement, Door, EntityMappings, FurnitureInstance, RoomConfig, RoomShell, ZoneRect, ZoneEntitySet, TargetEntitySet } from '../domain/types';
+import { DevicePlacement, Door, EntityMappings, FloorPlan, FurnitureInstance, RoomConfig, RoomShell, ZoneRect, ZoneEntitySet, TargetEntitySet } from '../domain/types';
 
 export const createRoomsRouter = (): Router => {
   const router = Router();
@@ -225,6 +225,21 @@ export const createRoomsRouter = (): Router => {
     return result;
   };
 
+  const parseFloorPlan = (fp: any): FloorPlan | undefined => {
+    if (!fp || typeof fp !== 'object') return undefined;
+    if (typeof fp.dataUrl !== 'string' || !fp.dataUrl.startsWith('data:')) return undefined;
+    const num = (v: any, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+    return {
+      dataUrl: fp.dataUrl,
+      imgWpx: num(fp.imgWpx, 0),
+      imgHpx: num(fp.imgHpx, 0),
+      mmPerPx: num(fp.mmPerPx, 1),
+      offsetXmm: num(fp.offsetXmm, 0),
+      offsetYmm: num(fp.offsetYmm, 0),
+      opacity: Math.max(0, Math.min(1, num(fp.opacity, 0.5))),
+    };
+  };
+
   const normalizeRoom = (body: any, existingId?: string): RoomConfig => ({
     id: body?.id ?? existingId ?? uuidv4(),
     name: typeof body?.name === 'string' && body.name.trim() ? body.name.trim() : 'Untitled room',
@@ -247,6 +262,7 @@ export const createRoomsRouter = (): Router => {
     doors: Array.isArray(body?.doors)
       ? body.doors.map(parseDoor).filter((d: Door | null) => d !== null)
       : undefined,
+    floorPlan: parseFloorPlan(body?.floorPlan),
     metadata: body?.metadata ?? {},
   });
 

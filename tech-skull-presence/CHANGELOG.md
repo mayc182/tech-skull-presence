@@ -2,6 +2,25 @@
 
 All notable changes to this add-on. Versions follow the `version:` field in `config.yaml`.
 
+## 0.4.0 — Floor-plan tracing template
+
+Upload a floor-plan image and trace your room over it (in **Room Builder**).
+
+- **Upload**: pick an image; it's stored with the room (base64) and rendered as a
+  backdrop under the grid/walls/zones.
+- **Opacity** slider.
+- **Scale calibration**: click "Calibrate scale", click two points a known
+  distance apart on the plan, enter the real metres — the image rescales so it
+  matches the room's real-world coordinates. Repeat to refine.
+- **Replace / Remove** controls.
+
+Backend: `RoomConfig.floorPlan` persisted; `express.json` limit raised to 25 MB
+to carry the image; room normaliser preserves the new field.
+
+⚠️ v1 — needs real-world testing. Large images make the room config bigger; the
+image lives at the top-left offset and scales from there (reposition by editing,
+drag-to-move planned for a later version).
+
 ## 0.3.1 — Readable zone labels + in-zone target highlight
 
 - **Fix**: zone labels are now always drawn **upright and centred**, regardless of

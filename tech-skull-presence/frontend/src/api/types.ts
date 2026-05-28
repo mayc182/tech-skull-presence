@@ -301,7 +301,28 @@ export interface RoomConfig {
   devicePlacement?: DevicePlacement;
   furniture?: FurnitureInstance[];
   doors?: Door[];
+  /** Optional floor-plan image used as a tracing template under the canvas. */
+  floorPlan?: FloorPlan;
   metadata?: Record<string, unknown>;
+}
+
+/**
+ * A floor-plan image rendered behind the room canvas as a tracing template.
+ * Positioned in world (mm) coordinates; scale is set via 2-point calibration.
+ */
+export interface FloorPlan {
+  /** Base64 data URL of the image. */
+  dataUrl: string;
+  /** Natural pixel dimensions of the image. */
+  imgWpx: number;
+  imgHpx: number;
+  /** Millimetres per image pixel (set by calibration). */
+  mmPerPx: number;
+  /** World position (mm) of the image's top-left corner. */
+  offsetXmm: number;
+  offsetYmm: number;
+  /** Overlay opacity 0..1. */
+  opacity: number;
 }
 
 export interface AppSettings {

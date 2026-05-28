@@ -46,7 +46,8 @@ export const createServer = (config: AppConfig, deps?: ServerDependencies): expr
     }),
   );
 
-  app.use(express.json());
+  // 25 MB limit so room configs can carry a base64 floor-plan image.
+  app.use(express.json({ limit: '25mb' }));
 
   app.use('/api/meta', createMetaRouter(config, deps?.transportStatus));
   app.use('/api/rooms', createRoomsRouter());

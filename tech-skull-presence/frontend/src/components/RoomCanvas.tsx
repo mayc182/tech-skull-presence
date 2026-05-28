@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FurnitureInstance, Door } from '../api/types';
 import { getFurnitureIcon } from '../furniture/icons';
 import { getFurnitureColors } from '../furniture/colors';
@@ -101,6 +101,12 @@ interface RoomCanvasProps {
   showDevice?: boolean;
   // When false, device icon won't capture mouse events (allows interacting with zones behind it)
   deviceInteractive?: boolean;
+  // Floor-plan tracing template (rendered behind the grid).
+  floorPlan?: import('../api/types').FloorPlan | null;
+  // When true, the canvas captures two clicks to calibrate the floor-plan scale.
+  calibrating?: boolean;
+  // Called with the world distance (mm) between the two calibration clicks.
+  onCalibrate?: (worldDistanceMm: number) => void;
 }
 
 const CANVAS_SIZE = 700;
@@ -565,8 +571,16 @@ export const RoomCanvas: React.FC<RoomCanvasProps> = ({
   showDoors = true,
   showDevice = true,
   deviceInteractive = true,
+  floorPlan = null,
+  calibrating = false,
+  onCalibrate,
 }) => {
   const safePoints = Array.isArray(points) ? points : [];
+  const [calibPts, setCalibPts] = useState<Point[]>([]);
+  // Clear calibration clicks whenever calibration mode is toggled off.
+  useEffect(() => {
+    if (!calibrating) setCalibPts([]);
+  }, [calibrating]);
   const safePlacement: DevicePlacement = {
     x: Number.isFinite(devicePlacement?.x) ? (devicePlacement as DevicePlacement).x : 0,
     y: Number.isFinite(devicePlacement?.y) ? (devicePlacement as DevicePlacement).y : 0,
@@ -1091,6 +1105,25 @@ export const RoomCanvas: React.FC<RoomCanvasProps> = ({
           <FloorMaterialDefs />
         </defs>
         <rect x={0} y={0} width={CANVAS_SIZE} height={CANVAS_SIZE} fill={canvasColors.background} />
+        {/* Floor-plan tracing template (behind grid/walls/zones) */}
+        {floorPlan && floorPlan.dataUrl && (() => {
+          const tl = toCanvasCoord({ x: floorPlan.offsetXmm, y: floorPlan.offsetYmm });
+          const wMm = floorPlan.imgWpx * floorPlan.mmPerPx;
+          const hMm = floorPlan.imgHpx * floorPlan.mmPerPx;
+          const br = toCanvasCoord({ x: floorPlan.offsetXmm + wMm, y: floorPlan.offsetYmm + hMm });
+          return (
+            <image
+              href={floorPlan.dataUrl}
+              x={tl.x}
+              y={tl.y}
+              width={Math.max(0, br.x - tl.x)}
+              height={Math.max(0, br.y - tl.y)}
+              opacity={floorPlan.opacity}
+              preserveAspectRatio="none"
+              pointerEvents="none"
+            />
+          );
+        })()}
         {(() => {
           const lines = [];
           // Adjust grid span based on zoom level to ensure grid lines are visible when zooming out
@@ -2068,6 +2101,52 @@ export const RoomCanvas: React.FC<RoomCanvasProps> = ({
               </g>
             );
           })()
+        )}
+
+        {/* Floor-plan scale calibration: click two points a known distance apart */}
+        {calibrating && (
+          <g>
+            <rect
+              x={0}
+              y={0}
+              width={CANVAS_SIZE}
+              height={CANVAS_SIZE}
+              fill="rgba(16,185,129,0.05)"
+              style={{ cursor: 'crosshair' }}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                const world = toWorldFromEvent(e);
+                if (!world) return;
+                const next = [...calibPts, world];
+                if (next.length >= 2) {
+                  const dx = next[1].x - next[0].x;
+                  const dy = next[1].y - next[0].y;
+                  const dist = Math.hypot(dx, dy);
+                  setCalibPts([]);
+                  if (dist > 1) onCalibrate?.(dist);
+                } else {
+                  setCalibPts(next);
+                }
+              }}
+            />
+            {calibPts.map((p, i) => {
+              const c = toCanvasCoord(p);
+              return <circle key={i} cx={c.x} cy={c.y} r={6} fill="#10b981" stroke="white" strokeWidth={2} pointerEvents="none" />;
+            })}
+            {calibPts.length === 1 && (
+              <text
+                x={toCanvasCoord(calibPts[0]).x}
+                y={toCanvasCoord(calibPts[0]).y - 14}
+                textAnchor="middle"
+                fill="#10b981"
+                fontSize={12}
+                fontWeight="700"
+                pointerEvents="none"
+              >
+                click 2nd point
+              </text>
+            )}
+          </g>
         )}
       </svg>
     </div>

@@ -219,7 +219,19 @@ export interface RoomConfig {
   devicePlacement?: DevicePlacement;
   furniture?: FurnitureInstance[];
   doors?: Door[];
+  floorPlan?: FloorPlan;
   metadata?: Record<string, unknown>;
+}
+
+/** Floor-plan tracing template image stored with a room (base64 data URL). */
+export interface FloorPlan {
+  dataUrl: string;
+  imgWpx: number;
+  imgHpx: number;
+  mmPerPx: number;
+  offsetXmm: number;
+  offsetYmm: number;
+  opacity: number;
 }
 
 export interface AppSettings {
