@@ -1,0 +1,178 @@
+{
+  "id": "myumar_hp_mini",
+  "schemaVersion": "1.0",
+  "label": "HP-mini (LD2410)",
+  "model": "HP_series",
+  "manufacturer": "MYumar",
+  "iconUrl": "./icon.png",
+  "capabilities": {
+    "tracking": false,
+    "zones": false,
+    "exclusionZones": false,
+    "entryZones": false,
+    "polygonZones": false,
+    "distanceOnlyTracking": true,
+    "environmental": false,
+    "sensors": {
+      "mmwavePresence": true,
+      "pir": false,
+      "illuminance": false,
+      "temperature": false,
+      "humidity": false
+    }
+  },
+  "limits": {
+    "maxZones": 0,
+    "maxRangeMeters": 6,
+    "fieldOfViewDegrees": 60
+  },
+  "services": {},
+  "entities": {
+    "presence": {
+      "template": "binary_sensor.${name}_presence",
+      "category": "sensor",
+      "subcategory": "presence",
+      "label": "Presence",
+      "required": true
+    },
+    "movingPresence": {
+      "template": "binary_sensor.${name}_moving_presence",
+      "category": "sensor",
+      "subcategory": "presence",
+      "label": "Moving Presence",
+      "required": false
+    },
+    "stillPresence": {
+      "template": "binary_sensor.${name}_still_presence",
+      "category": "sensor",
+      "subcategory": "presence",
+      "label": "Still Presence",
+      "required": false
+    },
+    "distance": {
+      "template": "sensor.${name}_detection_distance",
+      "category": "tracking",
+      "property": "distance",
+      "required": false
+    },
+    "lastDetectionDistance": {
+      "template": "sensor.${name}_last_detection_distance",
+      "category": "sensor",
+      "subcategory": "presence",
+      "label": "Last Detection Distance",
+      "required": false
+    },
+    "zone1Occupancy": {
+      "template": "binary_sensor.${name}_zone_1_occupancy",
+      "category": "sensor",
+      "subcategory": "zoneOccupancy",
+      "label": "Zone 1 Occupancy",
+      "required": false
+    },
+    "zone2Occupancy": {
+      "template": "binary_sensor.${name}_zone_2_occupancy",
+      "category": "sensor",
+      "subcategory": "zoneOccupancy",
+      "label": "Zone 2 Occupancy",
+      "required": false
+    },
+    "zone3Occupancy": {
+      "template": "binary_sensor.${name}_zone_3_occupancy",
+      "category": "sensor",
+      "subcategory": "zoneOccupancy",
+      "label": "Zone 3 Occupancy",
+      "required": false
+    },
+    "zone1EndDistance": {
+      "template": "number.${name}_zone_1_end_distance",
+      "category": "setting",
+      "group": "Distance Bands",
+      "label": "Zone 1 End",
+      "controlType": "number",
+      "min": 0, "max": 600, "step": 1, "unit": "cm",
+      "required": false
+    },
+    "zone2EndDistance": {
+      "template": "number.${name}_zone_2_end_distance",
+      "category": "setting",
+      "group": "Distance Bands",
+      "label": "Zone 2 End",
+      "controlType": "number",
+      "min": 0, "max": 600, "step": 1, "unit": "cm",
+      "required": false
+    },
+    "zone3EndDistance": {
+      "template": "number.${name}_zone_3_end_distance",
+      "category": "setting",
+      "group": "Distance Bands",
+      "label": "Zone 3 End",
+      "controlType": "number",
+      "min": 0, "max": 600, "step": 1, "unit": "cm",
+      "required": false
+    },
+    "timeout": {
+      "template": "number.${name}_timeout",
+      "category": "setting",
+      "group": "Radar",
+      "label": "Detection Timeout",
+      "controlType": "number",
+      "min": 0, "max": 600, "step": 1, "unit": "s",
+      "required": false
+    },
+    "lightThreshold": {
+      "template": "number.${name}_light_threshold",
+      "category": "setting",
+      "group": "Radar",
+      "label": "Light Threshold",
+      "controlType": "number",
+      "required": false
+    },
+    "maxMoveDistanceGate": {
+      "template": "number.${name}_max_move_distance_gate",
+      "category": "setting",
+      "group": "Radar",
+      "label": "Max Move Distance Gate",
+      "controlType": "number",
+      "required": false
+    },
+    "maxStillDistanceGate": {
+      "template": "number.${name}_max_still_distance_gate",
+      "category": "setting",
+      "group": "Radar",
+      "label": "Max Still Distance Gate",
+      "controlType": "number",
+      "required": false
+    },
+    "engineeringMode": {
+      "template": "switch.${name}_engineering_mode",
+      "category": "setting",
+      "group": "Advanced",
+      "label": "Engineering Mode",
+      "controlType": "switch",
+      "required": false
+    },
+    "controlBluetooth": {
+      "template": "switch.${name}_control_bluetooth",
+      "category": "setting",
+      "group": "Advanced",
+      "label": "Bluetooth",
+      "controlType": "switch",
+      "required": false
+    }
+  },
+  "entityMap": {
+    "presenceEntity": "binary_sensor.${name}_presence",
+    "distanceEntity": "sensor.${name}_detection_distance",
+    "settingsEntities": {
+      "timeout": "number.${name}_timeout",
+      "lightThreshold": "number.${name}_light_threshold",
+      "maxMoveDistanceGate": "number.${name}_max_move_distance_gate",
+      "maxStillDistanceGate": "number.${name}_max_still_distance_gate",
+      "engineeringMode": "switch.${name}_engineering_mode",
+      "controlBluetooth": "switch.${name}_control_bluetooth",
+      "zone1EndDistance": "number.${name}_zone_1_end_distance",
+      "zone2EndDistance": "number.${name}_zone_2_end_distance",
+      "zone3EndDistance": "number.${name}_zone_3_end_distance"
+    }
+  }
+}

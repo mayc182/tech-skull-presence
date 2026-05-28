@@ -1,0 +1,214 @@
+{
+  "id": "myumar_hp_saladeestar",
+  "schemaVersion": "1.0",
+  "label": "HP-Saladeestar (LD2410 + SCD40 + LED)",
+  "model": "HP_series",
+  "manufacturer": "MYumar",
+  "iconUrl": "./icon.png",
+  "capabilities": {
+    "tracking": false,
+    "zones": false,
+    "exclusionZones": false,
+    "entryZones": false,
+    "polygonZones": false,
+    "distanceOnlyTracking": true,
+    "environmental": true,
+    "sensors": {
+      "mmwavePresence": true,
+      "pir": false,
+      "illuminance": false,
+      "temperature": true,
+      "humidity": true,
+      "co2": true
+    },
+    "ui": {
+      "co2Led": true,
+      "noDisturb": true
+    }
+  },
+  "limits": {
+    "maxZones": 0,
+    "maxRangeMeters": 6,
+    "fieldOfViewDegrees": 60
+  },
+  "services": {},
+  "entities": {
+    "presence": {
+      "template": "binary_sensor.${name}_room_occupancy",
+      "category": "sensor",
+      "subcategory": "presence",
+      "label": "Occupancy",
+      "required": true
+    },
+    "rawPresence": {
+      "template": "binary_sensor.${name}_presence",
+      "category": "sensor",
+      "subcategory": "presence",
+      "label": "Raw mmWave Presence",
+      "required": false
+    },
+    "movingPresence": {
+      "template": "binary_sensor.${name}_moving_presence",
+      "category": "sensor",
+      "subcategory": "presence",
+      "label": "Moving Presence",
+      "required": false
+    },
+    "stillPresence": {
+      "template": "binary_sensor.${name}_still_presence",
+      "category": "sensor",
+      "subcategory": "presence",
+      "label": "Still Presence",
+      "required": false
+    },
+    "co2": {
+      "template": "sensor.${name}_scd40_co2",
+      "category": "sensor",
+      "subcategory": "environment",
+      "label": "CO2",
+      "required": false
+    },
+    "co2Trend": {
+      "template": "sensor.${name}_co2_trend",
+      "category": "sensor",
+      "subcategory": "environment",
+      "label": "CO2 Trend",
+      "required": false
+    },
+    "temperature": {
+      "template": "sensor.${name}_co2_temperature",
+      "category": "sensor",
+      "subcategory": "environment",
+      "label": "Temperature",
+      "required": false
+    },
+    "humidity": {
+      "template": "sensor.${name}_co2_humidity",
+      "category": "sensor",
+      "subcategory": "environment",
+      "label": "Humidity",
+      "required": false
+    },
+    "distance": {
+      "template": "sensor.${name}_detection_distance",
+      "category": "tracking",
+      "property": "distance",
+      "required": false
+    },
+    "lastDetectionDistance": {
+      "template": "sensor.${name}_last_detection_distance",
+      "category": "sensor",
+      "subcategory": "presence",
+      "label": "Last Detection Distance",
+      "required": false
+    },
+    "zone1Occupancy": {
+      "template": "binary_sensor.${name}_zone_1_occupancy",
+      "category": "sensor",
+      "subcategory": "zoneOccupancy",
+      "label": "Zone 1",
+      "required": false
+    },
+    "zone2Occupancy": {
+      "template": "binary_sensor.${name}_zone_2_occupancy",
+      "category": "sensor",
+      "subcategory": "zoneOccupancy",
+      "label": "Zone 2",
+      "required": false
+    },
+    "zone3Occupancy": {
+      "template": "binary_sensor.${name}_zone_3_occupancy",
+      "category": "sensor",
+      "subcategory": "zoneOccupancy",
+      "label": "Zone 3",
+      "required": false
+    },
+    "co2Led": {
+      "template": "light.${name}_co2_led",
+      "category": "setting",
+      "group": "UI",
+      "label": "CO2 LED",
+      "controlType": "light",
+      "required": false
+    },
+    "noDisturbMode": {
+      "template": "switch.${name}_no_disturb_mode",
+      "category": "setting",
+      "group": "UI",
+      "label": "No-Disturb Mode",
+      "controlType": "switch",
+      "required": false
+    },
+    "scd40TempOffset": {
+      "template": "number.${name}_scd40_temperature_offset",
+      "category": "setting",
+      "group": "Calibration",
+      "label": "SCD40 Temperature Offset",
+      "controlType": "number",
+      "min": -70, "max": 70, "step": 0.1, "unit": "°C",
+      "required": false
+    },
+    "scd40HumidityOffset": {
+      "template": "number.${name}_scd40_humidity_offset",
+      "category": "setting",
+      "group": "Calibration",
+      "label": "SCD40 Humidity Offset",
+      "controlType": "number",
+      "min": -70, "max": 70, "step": 0.1, "unit": "%",
+      "required": false
+    },
+    "zone1EndDistance": {
+      "template": "number.${name}_zone_1_end_distance",
+      "category": "setting",
+      "group": "Distance Bands",
+      "label": "Zone 1 End",
+      "controlType": "number",
+      "min": 0, "max": 600, "step": 1, "unit": "cm",
+      "required": false
+    },
+    "zone2EndDistance": {
+      "template": "number.${name}_zone_2_end_distance",
+      "category": "setting",
+      "group": "Distance Bands",
+      "label": "Zone 2 End",
+      "controlType": "number",
+      "min": 0, "max": 600, "step": 1, "unit": "cm",
+      "required": false
+    },
+    "zone3EndDistance": {
+      "template": "number.${name}_zone_3_end_distance",
+      "category": "setting",
+      "group": "Distance Bands",
+      "label": "Zone 3 End",
+      "controlType": "number",
+      "min": 0, "max": 600, "step": 1, "unit": "cm",
+      "required": false
+    },
+    "timeout": {
+      "template": "number.${name}_timeout",
+      "category": "setting",
+      "group": "Radar",
+      "label": "Detection Timeout",
+      "controlType": "number",
+      "min": 0, "max": 600, "step": 1, "unit": "s",
+      "required": false
+    }
+  },
+  "entityMap": {
+    "presenceEntity": "binary_sensor.${name}_room_occupancy",
+    "co2Entity": "sensor.${name}_scd40_co2",
+    "temperatureEntity": "sensor.${name}_co2_temperature",
+    "humidityEntity": "sensor.${name}_co2_humidity",
+    "distanceEntity": "sensor.${name}_detection_distance",
+    "settingsEntities": {
+      "co2Led": "light.${name}_co2_led",
+      "noDisturbMode": "switch.${name}_no_disturb_mode",
+      "scd40TempOffset": "number.${name}_scd40_temperature_offset",
+      "scd40HumidityOffset": "number.${name}_scd40_humidity_offset",
+      "zone1EndDistance": "number.${name}_zone_1_end_distance",
+      "zone2EndDistance": "number.${name}_zone_2_end_distance",
+      "zone3EndDistance": "number.${name}_zone_3_end_distance",
+      "timeout": "number.${name}_timeout"
+    }
+  }
+}

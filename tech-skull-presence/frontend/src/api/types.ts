@@ -1,0 +1,750 @@
+export interface DiscoveredDevice {
+  id: string;
+  name: string;
+  manufacturer?: string;
+  model?: string;
+  entityNamePrefix?: string; // e.g., "bedroom_ep_lite"
+  firmwareVersion?: string; // Software/firmware version (e.g., "1.3.2")
+  areaName?: string; // Home Assistant area name (e.g., "Living Room")
+}
+
+export interface DeviceProfileLimits {
+  maxZones?: number;
+  maxExclusionZones?: number;
+  maxEntryZones?: number;
+  maxTargets?: number;
+  maxRangeMeters?: number;
+  fieldOfViewDegrees?: number;
+}
+
+export interface ServiceDefinition {
+  domain: string;
+  template: string;
+}
+
+/**
+ * Entity category for classification and dynamic loading.
+ */
+export type EntityCategory = 'sensor' | 'setting' | 'zone' | 'tracking';
+
+/**
+ * Zone type for zone entities.
+ */
+export type ZoneType = 'regular' | 'exclusion' | 'entry' | 'polygon' | 'polygonExclusion' | 'polygonEntry';
+
+/**
+ * Control type for settings entities.
+ */
+export type ControlType = 'number' | 'switch' | 'select' | 'light' | 'text';
+
+/**
+ * Entity definition in the device profile.
+ */
+export interface EntityDefinition {
+  template: string;
+  category: EntityCategory;
+  required: boolean;
+  subcategory?: string;
+  group?: string;
+  label?: string;
+  controlType?: ControlType;
+  min?: number;
+  max?: number;
+  step?: number;
+  unit?: string;
+  description?: string;
+  options?: string[];
+  zoneType?: ZoneType;
+  zoneIndex?: number;
+  coord?: string;
+  targetIndex?: number;
+  property?: string;
+}
+
+export interface DeviceProfile {
+  id: string;
+  /** Schema version - bump when entities/features change to trigger resync prompts */
+  schemaVersion?: string;
+  label: string;
+  manufacturer: string;
+  capabilities: unknown;
+  limits: DeviceProfileLimits;
+  /** New categorized entity definitions */
+  entities?: Record<string, EntityDefinition>;
+  /** Service definitions for device actions */
+  services?: Record<string, ServiceDefinition>;
+  /** Legacy entity map (for backward compatibility) */
+  entityMap: Record<string, unknown>;
+  iconUrl?: string;
+  iconUrlCeiling?: string;
+  coverage?: {
+    presets: Record<string, { label: string; horizontalFovDeg: number; verticalFovDeg: number; maxRangeMeters: number }>;
+    secondarySensors?: Record<string, { label: string; horizontalFovDeg: number; verticalFovDeg: number; maxRangeMeters: number }>;
+    defaultPresetId?: string;
+  };
+}
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export interface ZoneRect {
+  id: string;
+  type: 'regular' | 'exclusion' | 'entry';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  timeout?: number;
+  enabled?: boolean; // Whether this zone slot is active/configured
+  label?: string; // Custom display label (e.g., "Bed", "Chair")
+}
+
+export interface ZonePolygon {
+  id: string;
+  type: 'regular' | 'exclusion' | 'entry';
+  vertices: Point[]; // At least 3 vertices for a valid polygon
+  enabled?: boolean;
+  label?: string;
+}
+
+// Union type for both zone shapes
+export type Zone = ZoneRect | ZonePolygon;
+
+// Type guard to check if a zone is a polygon
+export function isZonePolygon(zone: Zone): zone is ZonePolygon {
+  return 'vertices' in zone;
+}
+
+// Type guard to check if a zone is a rectangle
+export function isZoneRect(zone: Zone): zone is ZoneRect {
+  return 'width' in zone && 'height' in zone;
+}
+
+export interface ZoneBackup {
+  id: string;
+  schemaVersion: number;
+  createdAt: string;
+  source: 'device' | 'import';
+  deviceId: string;
+  deviceName?: string;
+  profileId: string;
+  firmwareVersion?: string;
+  zones: ZoneRect[];
+  zoneLabels?: Record<string, string>;
+  metadata?: {
+    model?: string;
+    entityNamePrefix?: string;
+    notes?: string;
+  };
+  importedAt?: string;
+}
+
+export interface RoomShell {
+  points: Array<{ x: number; y: number }>;
+}
+
+export interface DevicePlacement {
+  x: number;
+  y: number;
+  rotationDeg?: number;
+  mountType?: 'wall' | 'ceiling';
+  heightMm?: number;
+  pitchDeg?: number;
+  coveragePresetId?: string;
+  horizontalFovDeg?: number;
+  verticalFovDeg?: number;
+}
+
+export interface FurnitureType {
+  id: string; // e.g., 'bed-double', 'sofa-2seat'
+  label: string; // Display name
+  category: 'bedroom' | 'living-room' | 'office' | 'dining' | 'all';
+  defaultWidth: number; // mm
+  defaultDepth: number; // mm (depth in 2D top-down view)
+  defaultHeight: number; // mm (vertical height for future 3D)
+  iconUrl?: string; // Path to furniture icon/image
+  svgPath?: string; // SVG path data for custom shapes
+}
+
+export interface FurnitureInstance {
+  id: string; // Unique instance ID
+  typeId: string; // References FurnitureType.id
+  x: number; // Position in mm (room coordinates, center point)
+  y: number; // Position in mm (room coordinates, center point)
+  width: number; // Scaled width in mm
+  depth: number; // Scaled depth in mm (2D)
+  height: number; // Vertical height in mm (for future use)
+  rotationDeg: number; // 0-360 degrees
+  aspectRatioLocked: boolean; // Whether aspect ratio is locked during resize
+}
+
+export interface Door {
+  id: string; // Unique door ID
+  segmentIndex: number; // Which wall segment (0 to N-1)
+  positionOnSegment: number; // 0.0 to 1.0 - position along the segment
+  widthMm: number; // Door width in millimeters (typically 800-900mm)
+  swingDirection: 'in' | 'out'; // Door swing direction relative to room
+  swingSide: 'left' | 'right'; // Which side the hinge is on
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Entity Mapping Types
+// ─────────────────────────────────────────────────────────────────
+
+export interface ZoneEntitySet {
+  beginX: string;
+  endX: string;
+  beginY: string;
+  endY: string;
+  offDelay?: string;
+}
+
+export interface TargetEntitySet {
+  x: string;
+  y: string;
+  speed?: string;
+  resolution?: string;
+  angle?: string;
+  distance?: string;
+  active?: string;
+}
+
+export interface EntityMappings {
+  discoveredAt: string;
+  autoMatchedCount: number;
+  manuallyMappedCount: number;
+
+  presenceEntity?: string;
+  mmwaveEntity?: string;
+  pirEntity?: string;
+  temperatureEntity?: string;
+  humidityEntity?: string;
+  illuminanceEntity?: string;
+  co2Entity?: string;
+
+  distanceEntity?: string;
+  speedEntity?: string;
+  energyEntity?: string;
+  targetCountEntity?: string;
+  modeEntity?: string;
+
+  maxDistanceEntity?: string;
+  installationAngleEntity?: string;
+  polygonZonesEnabledEntity?: string;
+  trackingTargetCountEntity?: string;
+  firmwareUpdateEntity?: string;
+
+  zoneConfigEntities?: {
+    zone1?: ZoneEntitySet;
+    zone2?: ZoneEntitySet;
+    zone3?: ZoneEntitySet;
+    zone4?: ZoneEntitySet;
+  };
+
+  exclusionZoneConfigEntities?: {
+    exclusion1?: ZoneEntitySet;
+    exclusion2?: ZoneEntitySet;
+  };
+
+  entryZoneConfigEntities?: {
+    entry1?: ZoneEntitySet;
+    entry2?: ZoneEntitySet;
+  };
+
+  polygonZoneEntities?: {
+    zone1?: string;
+    zone2?: string;
+    zone3?: string;
+    zone4?: string;
+  };
+
+  polygonExclusionEntities?: {
+    exclusion1?: string;
+    exclusion2?: string;
+  };
+
+  polygonEntryEntities?: {
+    entry1?: string;
+    entry2?: string;
+  };
+
+  trackingTargets?: {
+    target1?: TargetEntitySet;
+    target2?: TargetEntitySet;
+    target3?: TargetEntitySet;
+  };
+
+  // Entry/Exit feature entities (EPL)
+  assumedPresentEntity?: string;
+  assumedPresentRemainingEntity?: string;
+
+  // Settings entities (device configuration controls)
+  settingsEntities?: Record<string, string>;
+
+  [key: string]: unknown;
+}
+
+export interface RoomConfig {
+  id: string;
+  name: string;
+  deviceId?: string;
+  profileId?: string;
+  units: 'metric' | 'imperial';
+  zones: ZoneRect[];
+  entityMappings?: EntityMappings;  // NEW: Resolved entity IDs from discovery
+  entityNamePrefix?: string;        // DEPRECATED: Legacy fallback
+  roomShell?: RoomShell;
+  roomShellFillMode?: 'overlay' | 'material';
+  floorMaterial?: 'wood-oak' | 'wood-walnut' | 'wood-cherry' | 'wood-ash' | 'wood-mahogany' | 'wood-herringbone' | 'carpet-beige' | 'carpet-gray' | 'carpet-charcoal' | 'carpet-navy' | 'carpet-burgundy' | 'tile-white' | 'tile-gray' | 'tile-terracotta' | 'marble-white' | 'marble-black' | 'slate' | 'concrete' | 'vinyl-light' | 'none';
+  devicePlacement?: DevicePlacement;
+  furniture?: FurnitureInstance[];
+  doors?: Door[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface AppSettings {
+  wizardCompleted: boolean;
+  wizardStep?: string;
+  outlineDone?: boolean;
+  placementDone?: boolean;
+  zonesReady?: boolean;
+  defaultRoomId?: string | null;
+}
+
+export interface LiveState {
+  deviceId: string;
+  profileId: string;
+  timestamp: number;
+  availability?: Record<string, 'ok' | 'unavailable'>;
+  presence?: boolean;
+  distance?: number | null;
+  speed?: number | null;
+  energy?: number | null;
+  targetCount?: number;
+  mmwave?: boolean;
+  pir?: boolean;
+  temperature?: number | null;
+  humidity?: number | null;
+  illuminance?: number | null;
+  co2?: number | null;
+  targets?: Array<{
+    id: number;
+    x: number | null;
+    y: number | null;
+    distance?: number | null;
+    speed?: number | null;
+    angle?: number | null;
+    resolution?: number | null;
+    active?: boolean;
+  }>;
+  // Zone occupancy status (EPL)
+  zoneOccupancy?: {
+    zone1?: boolean;
+    zone2?: boolean;
+    zone3?: boolean;
+    zone4?: boolean;
+  };
+  // Assumed presence status (entry/exit feature)
+  assumedPresent?: boolean;
+  assumedPresentRemaining?: number; // seconds remaining
+  config?: EP1Config;
+}
+
+// Everything Presence One (EP1) specific types
+export type EP1Mode = 'Presence Detection' | 'Distance and Speed';
+
+export interface EP1EnvironmentalData {
+  temperature: number | null;
+  humidity: number | null;
+  illuminance: number | null;
+}
+
+export interface EP1DistanceData {
+  distance: number | null;    // meters
+  speed: number | null;        // m/s
+  energy: number | null;       // signal strength
+  targetCount: number;         // 0 or 1
+}
+
+export interface EP1PresenceData {
+  occupancy: boolean;
+  mmwave: boolean;
+  pir: boolean;
+}
+
+export interface EP1Config {
+  mode: EP1Mode | null;
+  distanceMin: number | null;
+  distanceMax: number | null;
+  triggerDistance: number | null;
+  sensitivity: number | null;
+  triggerSensitivity: number | null;
+  offLatency: number | null;
+  onLatency: number | null;
+  thresholdFactor?: number | null;
+  microMotionEnabled?: boolean;
+  updateRate?: string | null;
+  // EPL-specific (installation angle for coordinate system rotation)
+  installationAngle?: number;
+}
+
+export interface EP1LiveData {
+  deviceId: string;
+  profileId: string;
+  timestamp: number;
+  presence: boolean;
+  mmwave: boolean;
+  pir: boolean;
+  temperature: number | null;
+  humidity: number | null;
+  illuminance: number | null;
+  distance: number | null;
+  speed: number | null;
+  energy: number | null;
+  targetCount: number;
+  config: EP1Config;
+}
+
+export interface ZoneAvailabilityEntry {
+  enabled: boolean;
+  disabledBy: 'user' | 'integration' | 'config_entry' | null;
+  status: 'enabled' | 'disabled' | 'unavailable' | 'unknown';
+}
+
+export type ZoneAvailability = Record<string, ZoneAvailabilityEntry>;
+
+// Full response from zone-availability endpoint including feature availability
+export interface ZoneAvailabilityResponse {
+  availability: ZoneAvailability;
+  polygonAvailability?: ZoneAvailability;
+  polygonZonesAvailable: boolean;
+  entryZonesAvailable: boolean;
+}
+
+// Custom floor material added by user
+export interface CustomFloorMaterial {
+  id: string;
+  label: string;
+  emoji: string;
+  color: string; // Hex color for the floor
+  category: 'wood' | 'carpet' | 'hard' | 'other';
+  patternType: 'solid' | 'stripes' | 'checker' | 'dots';
+  createdAt: number;
+}
+
+// Custom furniture type added by user
+export interface CustomFurnitureType {
+  id: string;
+  label: string;
+  category: 'bedroom' | 'living-room' | 'office' | 'dining' | 'all';
+  defaultWidth: number; // mm
+  defaultDepth: number; // mm
+  defaultHeight: number; // mm
+  color: string; // Hex color for the furniture icon
+  shape: 'rectangle' | 'rounded' | 'circle' | 'lshaped';
+  createdAt: number;
+}
+
+// Heatmap types
+export interface HeatmapCell {
+  x: number;
+  y: number;
+  count: number;
+  intensity: number; // 0-1 normalized
+}
+
+export interface HeatmapZoneStat {
+  zoneId: string;
+  zoneName: string;
+  sampleCount: number;
+  percentage: number;
+}
+
+export interface HourlyBreakdown {
+  hour: number; // 0-23
+  count: number;
+  percentage: number;
+}
+
+export interface AveragePosition {
+  x: number;
+  y: number;
+}
+
+export interface HeatmapResponse {
+  resolution: number;
+  bounds: {
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+  };
+  cells: HeatmapCell[];
+  stats: {
+    totalSamples: number;
+    maxCount: number;
+    timeRange: {
+      start: string;
+      end: string;
+    };
+    dataAvailable: boolean;
+  };
+  zoneStats?: HeatmapZoneStat[];
+  hourlyBreakdown?: HourlyBreakdown[];
+  averagePosition?: AveragePosition;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Firmware Update Types
+// ─────────────────────────────────────────────────────────────────
+
+export interface FirmwareSettings {
+  lanIpOverride?: string;
+  firmwareBaseUrl?: string;
+  firmwareIndexUrls?: string[];
+  cacheKeepCount?: number;
+}
+
+export interface FirmwareSettingsResponse {
+  settings: FirmwareSettings;
+  autoDetectedIp: string;
+  lanPort: number;
+  firmwareServerUrl: string;
+  defaultIndexUrls?: Record<string, string>;
+}
+
+export interface CachedFirmwareEntry {
+  deviceId: string;
+  token: string;
+  version: string;
+  originalManifestUrl: string;
+  cachedAt: number;
+  binaryCount: number;
+}
+
+export interface PreparedFirmwareResponse {
+  success: boolean;
+  deviceId: string;
+  token: string;
+  version: string;
+  localManifestUrl: string;
+  releaseSummary?: string;
+  releaseUrl?: string;
+}
+
+export interface FirmwareUpdateResponse {
+  success: boolean;
+  deviceId: string;
+  localManifestUrl: string;
+  version: string;
+}
+
+export interface FirmwareUpdateEntityStatus {
+  entityId: string;
+  name: string | null;
+  state: string;
+  attributes: Record<string, unknown>;
+  lastChanged: string;
+  lastUpdated: string;
+}
+
+export interface FirmwareUpdateStatusResponse extends FirmwareUpdateEntityStatus {}
+
+export type FirmwareUpdateStatus =
+  | 'idle'
+  | 'preparing'
+  | 'downloading'
+  | 'ready'
+  | 'updating'
+  | 'complete'
+  | 'error'
+  | 'checking';
+
+export type FirmwareMigrationPhase =
+  | 'idle'
+  | 'backing_up'
+  | 'installing'
+  | 'resync_wait'
+  | 'resyncing'
+  | 'restoring'
+  | 'verifying'
+  | 'complete'
+  | 'error';
+
+export interface FirmwareMigrationState {
+  deviceId: string;
+  phase: FirmwareMigrationPhase;
+  backupId: string | null;
+  preparedVersion: string | null;
+  startedAt: string;
+  updatedAt: string;
+  lastError: string | null;
+}
+
+export interface FirmwareMigrationStateResponse {
+  state: FirmwareMigrationState | null;
+}
+
+export interface DeviceReadinessResponse {
+  ready: boolean;
+  require: 'discover' | 'polygon' | string;
+  deviceEntityCount: number;
+  enabledEntityCount: number;
+  requiredEntityIds?: string[];
+  checkedEntityIds: string[];
+  availableEntityCount: number;
+  unavailableEntityIds: string[];
+  missingEntityIds: string[];
+  disabledEntityIds?: string[];
+  missingRegistryEntityIds?: string[];
+  missingStateEntityIds?: string[];
+  requireState?: boolean;
+  message?: string;
+  debugInfo?: {
+    activeTransport: string | null;
+    shouldFetchStates: boolean;
+    statesReturned: number;
+    registryPrefixPolygonCandidates?: string[];
+    devicePolygonCandidates?: string[];
+    registryObjectIdMatches?: Array<{ objectId: string; entityIds: string[] }>;
+    hasDeviceMapping?: boolean;
+    mappingProfileId?: string | null;
+    perEntity: Array<{
+      entityId: string;
+      inRegistry: boolean;
+      registryDeviceId: string | null;
+      disabledBy: string | null;
+      inStates: boolean;
+      stateStatus?: 'missing' | 'unavailable' | 'unknown' | 'available';
+      state?: string | null;
+      statePreview?: string | null;
+    }>;
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Auto-Update System Types
+// ─────────────────────────────────────────────────────────────────
+
+export type DeviceModel =
+  | 'everything-presence-one'
+  | 'everything-presence-lite'
+  | 'everything-presence-pro';
+
+export type FirmwareChannel = 'stable' | 'beta' | 'smartthings';
+
+/** How the device configuration was determined */
+export type ConfigSource = 'entities' | 'inferred';
+
+export interface DeviceConfig {
+  model: DeviceModel;
+  ethernet_enabled: boolean;
+  co2_enabled: boolean;
+  bluetooth_enabled: boolean;
+  board_revision: string;
+  sensor_variant: string;
+  firmware_channel: FirmwareChannel;
+  /** How the config was determined - 'entities' means read from device, 'inferred' means guessed */
+  configSource: ConfigSource;
+}
+
+export interface FirmwareRequirements {
+  model: string;
+  ethernet_enabled: boolean;
+  co2_enabled: boolean;
+  bluetooth_enabled: boolean;
+  board_revision: string;
+  sensor_variant: string;
+  firmware_channel: string;
+}
+
+export interface FirmwareVariant {
+  id: string;
+  manifestUrl: string;
+  requirements: FirmwareRequirements;
+}
+
+export interface FirmwareRelease {
+  version: string;
+  channel: 'stable' | 'beta';
+  releaseDate: string;
+  releaseNotes: string;
+  minPreviousVersion?: string;
+  variants: FirmwareVariant[];
+}
+
+export interface FirmwareMigration {
+  id: string;
+  fromVersion: string;
+  toVersion: string;
+  description: string;
+  backupRequired: boolean;
+  handler: string;
+}
+
+export interface FirmwareProduct {
+  id: string;
+  displayName: string;
+  latestVersion: string;
+}
+
+export interface FirmwareIndex {
+  schemaVersion: string;
+  generatedAt: string;
+  product: FirmwareProduct;
+  firmwares: FirmwareRelease[];
+  migrations: FirmwareMigration[];
+}
+
+export interface ValidationIssue {
+  field: string;
+  deviceValue: unknown;
+  firmwareValue: unknown;
+  message: string;
+  severity: 'hard_block' | 'warning';
+}
+
+export interface FirmwareValidation {
+  valid: boolean;
+  hardBlocks: ValidationIssue[];
+  warnings: ValidationIssue[];
+}
+
+export interface AvailableUpdate {
+  currentVersion: string;
+  newVersion: string;
+  channel: string;
+  releaseNotes: string;
+  variant: FirmwareVariant;
+  migration?: FirmwareMigration;
+}
+
+export interface FirmwareIndexResponse {
+  indexes: FirmwareIndex[];
+  count: number;
+  fetchedAt: string;
+}
+
+export interface DeviceConfigResponse {
+  config: DeviceConfig;
+}
+
+export interface AvailableUpdatesResponse {
+  updates: AvailableUpdate[];
+  hasUpdates: boolean;
+}
+
+export interface FirmwareValidationResponse {
+  validation: FirmwareValidation;
+}
+
+export interface AutoPrepareResponse {
+  success: boolean;
+  deviceConfig: DeviceConfig;
+  matchingVariant: FirmwareVariant;
+  validation: FirmwareValidation;
+  prepared: PreparedFirmwareResponse;
+  newVersion: string;
+}

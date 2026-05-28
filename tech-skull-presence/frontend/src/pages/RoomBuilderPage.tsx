@@ -1,0 +1,2468 @@
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import { fetchDevices, fetchProfiles, ingressAware } from '../api/client';
+import { fetchRooms, updateRoom } from '../api/rooms';
+import { RoomCanvas } from '../components/RoomCanvas';
+import { DiscoveredDevice, DeviceProfile, RoomConfig, LiveState, FurnitureInstance, FurnitureType, Door, DevicePlacement } from '../api/types';
+import { useWallDrawing } from '../hooks/useWallDrawing';
+import { FurnitureLibrary } from '../components/FurnitureLibrary';
+import { FurnitureEditor } from '../components/FurnitureEditor';
+import { DoorEditor } from '../components/DoorEditor';
+import { FLOOR_MATERIALS } from '../components/FloorMaterials';
+import {
+  CanvasBottomToolbar,
+  CanvasMobileSheet,
+  CanvasToolbarButton,
+  CanvasTopBar,
+} from '../components/CanvasLayout';
+import { DisplaySettingsControls } from '../components/DisplaySettingsControls';
+import { useDisplaySettings } from '../hooks/useDisplaySettings';
+import { useIsMobileCanvas } from '../hooks/useMediaQuery';
+import { getInstallationAngleSuggestion } from '../utils/rotationSuggestion';
+import { useDeviceMappings } from '../contexts/DeviceMappingsContext';
+import { getDeviceIconUrl } from '../utils/deviceIcon';
+import { resolveCoverageFov } from '../utils/coverage';
+import {
+  getCeilingSliceLineDepth,
+  getCeilingSlicePosition,
+  normalizeCeilingSliceConfig,
+} from '../utils/ceilingSlices';
+
+interface RoomBuilderPageProps {
+  onBack?: () => void;
+  onNavigate?: (view: 'wizard' | 'zoneEditor' | 'roomBuilder' | 'settings' | 'liveDashboard') => void;
+  initialRoomId?: string | null;
+  initialProfileId?: string | null;
+  onWizardProgress?: (progress: { outlineDone?: boolean; placementDone?: boolean }) => void;
+  liveState?: LiveState | null;
+  targetPositions?: Array<{
+    id: number;
+    x: number;
+    y: number;
+    distance: number | null;
+    speed: number | null;
+    angle: number | null;
+  }>;
+}
+
+type MobileRoomBuilderSheet = 'navigation' | 'tools' | 'zoom' | null;
+type RoomBuilderSettingsTab = 'canvas' | 'device' | 'display' | 'floor';
+
+const clampNumber = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
+
+export const RoomBuilderPage: React.FC<RoomBuilderPageProps> = ({
+  onBack,
+  onNavigate,
+  initialRoomId,
+  initialProfileId,
+  onWizardProgress,
+  liveState,
+  targetPositions,
+}) => {
+  const [devices, setDevices] = useState<DiscoveredDevice[]>([]);
+  const [profiles, setProfiles] = useState<DeviceProfile[]>([]);
+  const [rooms, setRooms] = useState<RoomConfig[]>([]);
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+  const [rangeMm, setRangeMm] = useState(15000);
+  const [widthMm, setWidthMm] = useState(4000);
+  const [heightMm, setHeightMm] = useState(4000);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [hoveredSegment, setHoveredSegment] = useState<number | null>(null);
+  const [selectedSegment, setSelectedSegment] = useState<number | null>(null);
+  const [segmentDragIndex, setSegmentDragIndex] = useState<number | null>(null);
+  const [segmentDragStart, setSegmentDragStart] = useState<{ x: number; y: number } | null>(null);
+  const [segmentDragBase, setSegmentDragBase] = useState<{ x: number; y: number }[] | null>(null);
+  const [endpointDrag, setEndpointDrag] = useState<{
+    segment: number;
+    endpoint: 'start' | 'end';
+    start: { x: number; y: number };
+    base: { x: number; y: number }[];
+  } | null>(null);
+  const [snapGridMm, setSnapGridMm] = useState(100); // 0.1m default snap
+  const [angleSnapEnabled, setAngleSnapEnabled] = useState(false);
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
+  const [cursorDelta, setCursorDelta] = useState<{ dx: number; dy: number; len: number } | null>(null);
+  const [displayUnits, setDisplayUnits] = useState<'metric' | 'imperial'>('metric');
+  const [zoom, setZoom] = useState(1.1);
+  const [isCanvasDragging, setIsCanvasDragging] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<RoomBuilderSettingsTab>('display');
+  const [showNavMenu, setShowNavMenu] = useState(false);
+  const [activeMobileSheet, setActiveMobileSheet] = useState<MobileRoomBuilderSheet>(null);
+  // Display settings (persisted to localStorage)
+  const {
+    showWalls, setShowWalls,
+    showFurniture, setShowFurniture,
+    showDoors, setShowDoors,
+    showDeviceIcon, setShowDeviceIcon,
+    showDeviceRadar, setShowDeviceRadar,
+    showTargets, setShowTargets,
+    targetMarkerScale, setTargetMarkerScale,
+    showZoneLabels, setShowZoneLabels,
+    zoneLabelScale, setZoneLabelScale,
+    clipRadarToWalls, setClipRadarToWalls,
+  } = useDisplaySettings();
+  const isMobileCanvas = useIsMobileCanvas();
+  const [panOffsetMm, setPanOffsetMm] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [showFurnitureLibrary, setShowFurnitureLibrary] = useState(false);
+  const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
+  const [selectedDoorId, setSelectedDoorId] = useState<string | null>(null);
+  const [isDoorPlacementMode, setIsDoorPlacementMode] = useState(false);
+  const [doorDrag, setDoorDrag] = useState<{
+    doorId: string;
+    startX: number;
+    startY: number;
+    originalPosition: number;
+  } | null>(null);
+  const [showRotationSuggestion, setShowRotationSuggestion] = useState(false);
+  const [rotationSuggestion, setRotationSuggestion] = useState<{ suggestedAngle: number; targetAxis: number } | null>(null);
+  const [applyingInstallationAngle, setApplyingInstallationAngle] = useState(false);
+  const [rotationSuggestionError, setRotationSuggestionError] = useState<string | null>(null);
+  const lastRotationSuggestionRef = useRef<number | null>(null);
+  const CANVAS_SIZE = 700;
+  const HALF = CANVAS_SIZE / 2;
+  const toCanvas = (v: number, range: number) => (v / range) * CANVAS_SIZE;
+
+  const selectedRoom = useMemo(
+    () => (selectedRoomId ? rooms.find((r) => r.id === selectedRoomId) ?? null : null),
+    [rooms, selectedRoomId],
+  );
+
+  const selectedProfile = useMemo(
+    () => profiles.find((p) => p.id === (selectedRoom?.profileId ?? selectedProfileId)) ?? null,
+    [profiles, selectedProfileId, selectedRoom?.profileId],
+  );
+
+  const selectedDevice = useMemo(
+    () => (selectedRoom?.deviceId ? devices.find((d) => d.id === selectedRoom.deviceId) ?? null : null),
+    [devices, selectedRoom?.deviceId],
+  );
+
+  const deviceIconUrl = useMemo(
+    () => getDeviceIconUrl(selectedProfile, selectedRoom?.devicePlacement),
+    [selectedProfile, selectedRoom?.devicePlacement],
+  );
+
+  const coverageFov = useMemo(
+    () => resolveCoverageFov(selectedProfile, selectedRoom?.devicePlacement),
+    [selectedProfile, selectedRoom?.devicePlacement],
+  );
+  const effectiveCoverageMaxRangeMeters = coverageFov?.maxRangeMeters ?? selectedProfile?.limits?.maxRangeMeters;
+
+  const isCeilingMount = selectedRoom?.devicePlacement?.mountType === 'ceiling';
+  const isCeilingSliceMode =
+    selectedProfile?.id === 'everything_presence_pro' &&
+    selectedRoom?.devicePlacement?.mountType === 'ceiling';
+  const trackingMaxRangeMm = (selectedProfile?.limits?.maxRangeMeters ?? 6) * 1000;
+  const ceilingSliceConfig = useMemo(
+    () => normalizeCeilingSliceConfig(selectedRoom?.metadata?.ceilingSliceConfig, trackingMaxRangeMm, true),
+    [selectedRoom?.metadata?.ceilingSliceConfig, trackingMaxRangeMm],
+  );
+
+  const heightCoverageConfig = useMemo(() => {
+    if (!selectedRoom?.devicePlacement || !isCeilingMount) return null;
+    if (!coverageFov) return null;
+    const heightMm = selectedRoom.devicePlacement.heightMm;
+    const pitchDeg = Number.isFinite(selectedRoom.devicePlacement.pitchDeg)
+      ? Number(selectedRoom.devicePlacement.pitchDeg)
+      : (selectedRoom.devicePlacement.mountType === 'ceiling' ? 90 : 0);
+    if (!Number.isFinite(heightMm) || !Number.isFinite(pitchDeg)) return null;
+    return {
+      enabled: true,
+      heightMm: Number(heightMm),
+      pitchDeg: Number(pitchDeg),
+      horizontalFovDeg: coverageFov.horizontalFovDeg,
+      verticalFovDeg: coverageFov.verticalFovDeg,
+      maxRangeMeters: coverageFov.maxRangeMeters,
+    };
+  }, [coverageFov, selectedRoom?.devicePlacement, isCeilingMount]);
+
+  const updateDevicePlacement = useCallback((updates: Partial<DevicePlacement>) => {
+    if (!selectedRoom) return;
+    const base: DevicePlacement = selectedRoom.devicePlacement ?? { x: 0, y: 0, rotationDeg: 0 };
+    const nextPlacement: DevicePlacement = { ...base, ...updates };
+    const nextRoom: RoomConfig = { ...selectedRoom, devicePlacement: nextPlacement };
+    setRooms((prev) => prev.map((r) => (r.id === selectedRoom.id ? nextRoom : r)));
+  }, [selectedRoom]);
+
+  const coveragePresets = selectedProfile?.coverage?.presets ?? null;
+  const coveragePresetId = useMemo(() => {
+    if (!coveragePresets) return null;
+    const persistedPresetId = selectedRoom?.devicePlacement?.coveragePresetId;
+    if (persistedPresetId === 'custom') return 'custom';
+    if (persistedPresetId && coveragePresets[persistedPresetId]) return persistedPresetId;
+    const h = selectedRoom?.devicePlacement?.horizontalFovDeg;
+    const v = selectedRoom?.devicePlacement?.verticalFovDeg;
+    if (Number.isFinite(h) && Number.isFinite(v)) {
+      const match = Object.entries(coveragePresets).find(([, preset]) =>
+        Math.abs(preset.horizontalFovDeg - Number(h)) < 0.5 &&
+        Math.abs(preset.verticalFovDeg - Number(v)) < 0.5
+      );
+      return match ? match[0] : 'custom';
+      }
+      return 'default';
+  }, [coveragePresets, selectedRoom?.devicePlacement]);
+
+  const displayHeightMeters = Number.isFinite(selectedRoom?.devicePlacement?.heightMm)
+    ? Number(((selectedRoom?.devicePlacement?.heightMm ?? 0) / 1000).toFixed(1))
+    : '';
+
+  const selectedFurniture = useMemo(
+    () => (selectedFurnitureId ? selectedRoom?.furniture?.find((f) => f.id === selectedFurnitureId) ?? null : null),
+    [selectedFurnitureId, selectedRoom?.furniture],
+  );
+
+  const selectedDoor = useMemo(
+    () => (selectedDoorId ? selectedRoom?.doors?.find((d) => d.id === selectedDoorId) ?? null : null),
+    [selectedDoorId, selectedRoom?.doors],
+  );
+
+  const currentInstallationAngle =
+    typeof liveState?.config?.installationAngle === 'number' ? liveState.config.installationAngle : null;
+  const deviceLocalToRoom = useCallback((deviceX: number, deviceY: number) => {
+    if (!selectedRoom?.devicePlacement) {
+      return { x: deviceX, y: deviceY };
+    }
+    const { x, y, rotationDeg } = selectedRoom.devicePlacement;
+    const angleRad = (((rotationDeg ?? 0) + (currentInstallationAngle ?? 0)) * Math.PI) / 180;
+    const cos = Math.cos(angleRad);
+    const sin = Math.sin(angleRad);
+    return {
+      x: deviceX * cos - deviceY * sin + x,
+      y: deviceX * sin + deviceY * cos + y,
+    };
+  }, [currentInstallationAngle, selectedRoom?.devicePlacement]);
+
+  const isEplDevice = useMemo(() => {
+    const caps = selectedProfile?.capabilities as { tracking?: boolean; distanceOnlyTracking?: boolean } | undefined;
+    return Boolean(caps?.tracking) && !caps?.distanceOnlyTracking;
+  }, [selectedProfile]);
+
+  // Device mappings context for entity resolution
+  const { getEntityId } = useDeviceMappings();
+
+  const resolveInstallationAngleEntityId = useCallback(() => {
+    if (!selectedRoom) return null;
+
+    // First try device mappings (new system - supports EPP and EPL)
+    if (selectedRoom.deviceId) {
+      const entityFromMapping = getEntityId(selectedRoom.deviceId, 'installationAngle');
+      if (entityFromMapping) return entityFromMapping;
+    }
+
+    // Fall back to legacy room-level mapping
+    const mappingEntity = selectedRoom.entityMappings?.installationAngleEntity;
+    if (mappingEntity) return mappingEntity;
+
+    // No mapping found - return null (user should run entity discovery)
+    return null;
+  }, [selectedRoom, getEntityId]);
+
+  const handleRotationSuggestion = useCallback(
+    (rotationDeg: number) => {
+      if (!selectedRoom || !isEplDevice) return;
+      const suggestion = getInstallationAngleSuggestion(rotationDeg, selectedRoom.roomShell?.points);
+      if (!suggestion) return;
+      if (lastRotationSuggestionRef.current === rotationDeg) return;
+
+      const entityId = resolveInstallationAngleEntityId();
+      if (!entityId) return;
+
+      setRotationSuggestion({ suggestedAngle: suggestion.suggestedAngle, targetAxis: suggestion.targetAxis });
+      setRotationSuggestionError(null);
+      setShowRotationSuggestion(true);
+      lastRotationSuggestionRef.current = rotationDeg;
+    },
+    [selectedRoom, isEplDevice, currentInstallationAngle, resolveInstallationAngleEntityId]
+  );
+
+  const applyInstallationAngleSuggestion = useCallback(async () => {
+    if (!selectedRoom?.deviceId || !rotationSuggestion) return;
+    const entityId = resolveInstallationAngleEntityId();
+    if (!entityId) {
+      setRotationSuggestionError('Installation angle entity could not be resolved for this device.');
+      return;
+    }
+
+    setApplyingInstallationAngle(true);
+    setRotationSuggestionError(null);
+    try {
+      const response = await fetch(ingressAware(`api/live/${selectedRoom.deviceId}/entity`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entityId,
+          value: rotationSuggestion.suggestedAngle,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update installation angle');
+      }
+
+      window.dispatchEvent(
+        new CustomEvent('ep:refresh-live-state', {
+          detail: { deviceId: selectedRoom.deviceId },
+        })
+      );
+      setShowRotationSuggestion(false);
+    } catch (err) {
+      setRotationSuggestionError('Failed to update installation angle.');
+    } finally {
+      setApplyingInstallationAngle(false);
+    }
+  }, [selectedRoom?.deviceId, rotationSuggestion, resolveInstallationAngleEntityId]);
+
+  const handlePointsChange = useCallback((nextPoints: { x: number; y: number }[]) => {
+    if (!selectedRoom) return;
+    const updated: RoomConfig = { ...selectedRoom, roomShell: { points: nextPoints } };
+    setRooms((prev) => prev.map((r) => (r.id === selectedRoom.id ? updated : r)));
+  }, [selectedRoom]);
+
+  const handleAddFurniture = useCallback((furnitureType: FurnitureType) => {
+    if (!selectedRoom) return;
+    // Generate a simple UUID fallback for older browsers
+    const generateId = () => {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+      }
+      // Fallback: simple UUID v4 implementation
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    };
+
+    const newFurniture: FurnitureInstance = {
+      id: generateId(),
+      typeId: furnitureType.id,
+      x: 0,
+      y: 0,
+      width: furnitureType.defaultWidth,
+      depth: furnitureType.defaultDepth,
+      height: furnitureType.defaultHeight,
+      rotationDeg: 0,
+      aspectRatioLocked: true,
+    };
+    const updated: RoomConfig = {
+      ...selectedRoom,
+      furniture: [...(selectedRoom.furniture ?? []), newFurniture],
+    };
+    setRooms((prev) => prev.map((r) => (r.id === selectedRoom.id ? updated : r)));
+    setSelectedFurnitureId(newFurniture.id);
+    setShowFurnitureLibrary(false);
+    setActiveMobileSheet(null);
+  }, [selectedRoom]);
+
+  const handleFurnitureChange = useCallback((updatedFurniture: FurnitureInstance) => {
+    if (!selectedRoom) return;
+    const updated: RoomConfig = {
+      ...selectedRoom,
+      furniture: (selectedRoom.furniture ?? []).map((f) => (f.id === updatedFurniture.id ? updatedFurniture : f)),
+    };
+    setRooms((prev) => prev.map((r) => (r.id === selectedRoom.id ? updated : r)));
+  }, [selectedRoom]);
+
+  const handleFurnitureDelete = useCallback(() => {
+    if (!selectedRoom || !selectedFurnitureId) return;
+    const updated: RoomConfig = {
+      ...selectedRoom,
+      furniture: (selectedRoom.furniture ?? []).filter((f) => f.id !== selectedFurnitureId),
+    };
+    setRooms((prev) => prev.map((r) => (r.id === selectedRoom.id ? updated : r)));
+    setSelectedFurnitureId(null);
+  }, [selectedRoom, selectedFurnitureId]);
+
+  const handleAddDoor = useCallback(() => {
+    if (!selectedRoom) return;
+    if (!selectedRoom.roomShell?.points || selectedRoom.roomShell.points.length < 3) {
+      alert('Please draw a room outline first');
+      return;
+    }
+    // Toggle door placement mode
+    setIsDoorPlacementMode((prev) => !prev);
+    if (!isDoorPlacementMode) {
+      // Entering placement mode - deselect everything
+      setSelectedDoorId(null);
+      setSelectedFurnitureId(null);
+      setSelectedSegment(null);
+    }
+  }, [selectedRoom, isDoorPlacementMode]);
+
+  const handleDoorChange = useCallback((updatedDoor: Door) => {
+    if (!selectedRoom) return;
+    const updated: RoomConfig = {
+      ...selectedRoom,
+      doors: (selectedRoom.doors ?? []).map((d) => (d.id === updatedDoor.id ? updatedDoor : d)),
+    };
+    setRooms((prev) => prev.map((r) => (r.id === selectedRoom.id ? updated : r)));
+  }, [selectedRoom]);
+
+  const handleDoorDelete = useCallback(() => {
+    if (!selectedRoom || !selectedDoorId) return;
+    const updated: RoomConfig = {
+      ...selectedRoom,
+      doors: (selectedRoom.doors ?? []).filter((d) => d.id !== selectedDoorId),
+    };
+    setRooms((prev) => prev.map((r) => (r.id === selectedRoom.id ? updated : r)));
+    setSelectedDoorId(null);
+  }, [selectedRoom, selectedDoorId]);
+
+  // Helper to generate UUID
+  const generateId = () => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    // Fallback: simple UUID v4 implementation
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  };
+
+  const handleWallSegmentClick = useCallback((segmentIndex: number, positionOnSegment: number) => {
+    if (!selectedRoom || !isDoorPlacementMode) return;
+
+    const newDoor: Door = {
+      id: generateId(),
+      segmentIndex,
+      positionOnSegment,
+      widthMm: 800, // Standard door width
+      swingDirection: 'in',
+      swingSide: 'left',
+    };
+    const updated: RoomConfig = {
+      ...selectedRoom,
+      doors: [...(selectedRoom.doors ?? []), newDoor],
+    };
+    setRooms((prev) => prev.map((r) => (r.id === selectedRoom.id ? updated : r)));
+    setSelectedDoorId(newDoor.id);
+    setIsDoorPlacementMode(false); // Exit placement mode after placing
+  }, [selectedRoom, isDoorPlacementMode]);
+
+  const handleDoorDragStart = useCallback((doorId: string, x: number, y: number) => {
+    const door = selectedRoom?.doors?.find((d) => d.id === doorId);
+    if (!door) return;
+    setDoorDrag({
+      doorId,
+      startX: x,
+      startY: y,
+      originalPosition: door.positionOnSegment,
+    });
+  }, [selectedRoom]);
+
+  const handleDoorDragMove = useCallback((x: number, y: number) => {
+    if (!doorDrag || !selectedRoom) return;
+
+    const door = selectedRoom.doors?.find((d) => d.id === doorDrag.doorId);
+    if (!door || !selectedRoom.roomShell?.points) return;
+
+    const pts = selectedRoom.roomShell.points;
+    if (door.segmentIndex < 0 || door.segmentIndex >= pts.length) return;
+
+    const segmentStart = pts[door.segmentIndex];
+    const segmentEnd = pts[(door.segmentIndex + 1) % pts.length];
+    if (!segmentStart || !segmentEnd) return;
+
+    // Calculate the projection of the cursor onto the wall segment
+    const segmentDx = segmentEnd.x - segmentStart.x;
+    const segmentDy = segmentEnd.y - segmentStart.y;
+    const segmentLength = Math.hypot(segmentDx, segmentDy);
+
+    if (segmentLength < 1) return;
+
+    // Vector from segment start to cursor
+    const toCursorX = x - segmentStart.x;
+    const toCursorY = y - segmentStart.y;
+
+    // Project cursor onto segment
+    const projection = (toCursorX * segmentDx + toCursorY * segmentDy) / (segmentLength * segmentLength);
+
+    // Clamp to [0, 1]
+    const newPosition = Math.max(0, Math.min(1, projection));
+
+    handleDoorChange({ ...door, positionOnSegment: newPosition });
+  }, [doorDrag, selectedRoom, handleDoorChange]);
+
+  const handleDoorDragEnd = useCallback(() => {
+    setDoorDrag(null);
+  }, []);
+
+  // Door validation helpers
+  const validateDoor = useCallback((door: Door, allDoors: Door[], roomShell?: RoomShell): {
+    overlaps: boolean;
+    nearCorner: boolean;
+    tooWide: boolean;
+    overlapWith?: string[];
+  } => {
+    if (!roomShell?.points || roomShell.points.length < 3) {
+      return { overlaps: false, nearCorner: false, tooWide: false };
+    }
+
+    const pts = roomShell.points;
+    if (door.segmentIndex < 0 || door.segmentIndex >= pts.length) {
+      return { overlaps: false, nearCorner: false, tooWide: false };
+    }
+
+    const segmentStart = pts[door.segmentIndex];
+    const segmentEnd = pts[(door.segmentIndex + 1) % pts.length];
+    if (!segmentStart || !segmentEnd) {
+      return { overlaps: false, nearCorner: false, tooWide: false };
+    }
+
+    const segmentLength = Math.hypot(segmentEnd.x - segmentStart.x, segmentEnd.y - segmentStart.y);
+
+    // Check if door is too wide for segment
+    const doorWidthRatio = door.widthMm / segmentLength;
+    const tooWide = doorWidthRatio > 0.9; // Door takes up more than 90% of wall
+
+    // Check if door is near corner (within 10% of segment ends)
+    const nearCorner = door.positionOnSegment < 0.1 || door.positionOnSegment > 0.9;
+
+    // Check for overlaps with other doors on same segment
+    const doorsOnSameSegment = allDoors.filter(
+      (d) => d.id !== door.id && d.segmentIndex === door.segmentIndex
+    );
+
+    const overlapWith: string[] = [];
+    let overlaps = false;
+
+    for (const otherDoor of doorsOnSameSegment) {
+      // Calculate the span of each door along the segment (0-1)
+      const halfWidth1 = (door.widthMm / segmentLength) / 2;
+      const halfWidth2 = (otherDoor.widthMm / segmentLength) / 2;
+
+      const start1 = door.positionOnSegment - halfWidth1;
+      const end1 = door.positionOnSegment + halfWidth1;
+      const start2 = otherDoor.positionOnSegment - halfWidth2;
+      const end2 = otherDoor.positionOnSegment + halfWidth2;
+
+      // Check if ranges overlap
+      if (!(end1 < start2 || end2 < start1)) {
+        overlaps = true;
+        overlapWith.push(otherDoor.id);
+      }
+    }
+
+    return { overlaps, nearCorner, tooWide, overlapWith };
+  }, []);
+
+  const doorValidation = useMemo(() => {
+    if (!selectedDoor || !selectedRoom) return null;
+    return validateDoor(selectedDoor, selectedRoom.doors ?? [], selectedRoom.roomShell);
+  }, [selectedDoor, selectedRoom, validateDoor]);
+
+  const desktopEditorOpen = !!selectedDoor || !!selectedFurniture;
+
+  // Wall drawing hook
+  const {
+    isDrawingWall,
+    pendingStart,
+    previewPoint,
+    handleCanvasClick: wallDrawingClick,
+    handleCanvasMove: wallDrawingMove,
+    startDrawing,
+    stopDrawing,
+    removeLastPoint,
+    setIsDrawingWall,
+  } = useWallDrawing({
+    snapGridMm,
+    onPointsChange: handlePointsChange,
+    currentPoints: selectedRoom?.roomShell?.points ?? [],
+  });
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [deviceRes, profileRes, roomRes] = await Promise.all([fetchDevices(), fetchProfiles(), fetchRooms()]);
+        setDevices(deviceRes.devices);
+        setProfiles(profileRes.profiles);
+        setRooms(roomRes.rooms);
+
+        const initialRoom =
+          (initialRoomId && roomRes.rooms.find((r) => r.id === initialRoomId)) || roomRes.rooms[0] || null;
+        if (initialRoom) {
+          setSelectedRoomId(initialRoom.id);
+          if (initialRoom.profileId) setSelectedProfileId(initialRoom.profileId);
+        }
+        if (!initialRoom?.profileId && !selectedProfileId && profileRes.profiles.length > 0) {
+          setSelectedProfileId(initialProfileId ?? profileRes.profiles[0].id);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load data');
+      }
+    };
+    load();
+  }, [initialProfileId, initialRoomId, selectedProfileId]);
+
+  useEffect(() => {
+    // reset pan when switching rooms
+    setPanOffsetMm({ x: 0, y: 0 });
+  }, [selectedRoomId]);
+
+  useEffect(() => {
+    if (!selectedRoom?.roomShell?.points?.length) return;
+    const pts = selectedRoom.roomShell.points;
+    const xs = pts.map((p) => p.x);
+    const ys = pts.map((p) => p.y);
+    const width = Math.max(...xs) - Math.min(...xs);
+    const height = Math.max(...ys) - Math.min(...ys);
+    if (Number.isFinite(width)) setWidthMm(Math.round(width));
+    if (Number.isFinite(height)) setHeightMm(Math.round(height));
+  }, [selectedRoom?.roomShell?.points]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const isEditable =
+        target?.isContentEditable ||
+        tag === 'input' ||
+        tag === 'textarea' ||
+        tag === 'select' ||
+        tag === 'button';
+      if (isEditable) return;
+
+      if (e.key === 'Escape') {
+        stopDrawing();
+        return;
+      }
+      if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        setIsDrawingWall((prev) => !prev);
+        return;
+      }
+      if (e.key === 'Enter') {
+        if (isDrawingWall) {
+          e.preventDefault();
+          handleCloseLoop();
+        }
+        return;
+      }
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        if (selectedRoom?.roomShell?.points?.length) {
+          e.preventDefault();
+          removeLastPoint();
+        }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isDrawingWall, selectedRoom?.roomShell?.points, stopDrawing, setIsDrawingWall, removeLastPoint]);
+
+  const handleAddPoint = (p: { x: number; y: number }) => {
+    if (!selectedRoom) return;
+    const nextPoints = [...(selectedRoom.roomShell?.points ?? []), p];
+    handlePointsChange(nextPoints);
+  };
+
+  const handleSetRectangle = () => {
+    if (!selectedRoom) return;
+    const w = clampNumber(widthMm, 500, 20000);
+    const h = clampNumber(heightMm, 500, 20000);
+    const pts = [
+      { x: -w / 2, y: -h / 2 },
+      { x: w / 2, y: -h / 2 },
+      { x: w / 2, y: h / 2 },
+      { x: -w / 2, y: h / 2 },
+    ];
+    handlePointsChange(pts);
+  };
+
+  const handleClear = () => {
+    if (!selectedRoom) return;
+    handlePointsChange([]);
+    stopDrawing();
+  };
+
+  const handleCloseLoop = () => {
+    if (!selectedRoom?.roomShell?.points || selectedRoom.roomShell.points.length < 2) {
+      stopDrawing();
+      return;
+    }
+    const pts = selectedRoom.roomShell.points;
+    const first = pts[0];
+    const last = pts[pts.length - 1];
+    if (first && last) {
+      const d = Math.hypot(first.x - last.x, first.y - last.y);
+      if (d < 250) {
+        const next = [...pts];
+        next[next.length - 1] = first;
+        handlePointsChange(next);
+      }
+    }
+    // We render closed polygons; no need to duplicate the first point.
+    stopDrawing();
+
+    // Auto-center the room outline in the grid
+    if (pts.length >= 3) {
+      // Calculate the bounding box center
+      const xs = pts.map((p) => p.x);
+      const ys = pts.map((p) => p.y);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+
+      // Set pan offset to center the outline (negate the center to move it to origin)
+      setPanOffsetMm({ x: centerX, y: centerY });
+    }
+  };
+
+
+  const snapDelta = (dx: number, dy: number) => {
+    if (dx === 0 && dy === 0) return { dx, dy };
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+    if (absDx * 2 < absDy) {
+      return { dx: 0, dy };
+    }
+    if (absDy * 2 < absDx) {
+      return { dx, dy: 0 };
+    }
+    const signX = dx >= 0 ? 1 : -1;
+    const signY = dy >= 0 ? 1 : -1;
+    const mag = Math.max(absDx, absDy);
+    return { dx: signX * mag, dy: signY * mag };
+  };
+
+  const segmentMidpointPercent = useMemo(() => {
+    if (selectedSegment === null || !selectedRoom?.roomShell?.points?.length) return null;
+    const pts = selectedRoom.roomShell.points;
+    const a = pts[selectedSegment];
+    const b = pts[(selectedSegment + 1) % pts.length];
+    if (!a || !b) return null;
+    const midX = (a.x + b.x) / 2;
+    const midY = (a.y + b.y) / 2;
+    const range = rangeMm || 6000;
+    const viewX = HALF + toCanvas(midX, range);
+    const viewY = HALF + toCanvas(midY, range);
+    return { left: (viewX / CANVAS_SIZE) * 100, top: (viewY / CANVAS_SIZE) * 100 };
+  }, [selectedSegment, selectedRoom?.roomShell?.points, rangeMm]);
+
+  const adjustSegmentLength = (meters: number) => {
+    if (selectedSegment === null || !selectedRoom?.roomShell?.points) return;
+    const pts = selectedRoom.roomShell.points;
+    if (pts.length < 2) return;
+    const start = pts[selectedSegment];
+    const end = pts[(selectedSegment + 1) % pts.length];
+    if (!start || !end) return;
+    const currentLen = Math.hypot(end.x - start.x, end.y - start.y) || 1;
+    const desired = Math.max(0.1, meters) * 1000;
+    const scale = desired / currentLen;
+    const dx = (end.x - start.x) * scale;
+    const dy = (end.y - start.y) * scale;
+    const newEnd = { x: start.x + dx, y: start.y + dy };
+    const nextPoints = [...pts];
+    nextPoints[(selectedSegment + 1) % pts.length] = newEnd;
+    handlePointsChange(nextPoints);
+  };
+
+  const nudgeSegmentLength = (deltaMeters: number) => {
+    if (selectedSegment === null || !selectedRoom?.roomShell?.points) return;
+    const pts = selectedRoom.roomShell.points;
+    if (pts.length < 2) return;
+    const start = pts[selectedSegment];
+    const end = pts[(selectedSegment + 1) % pts.length];
+    if (!start || !end) return;
+    const currentLen = Math.hypot(end.x - start.x, end.y - start.y) || 1;
+    const desired = Math.max(0.1, currentLen / 1000 + deltaMeters);
+    adjustSegmentLength(desired);
+  };
+
+  const offsetSegmentNormal = (meters: number) => {
+    if (selectedSegment === null || !selectedRoom?.roomShell?.points) return;
+    const pts = selectedRoom.roomShell.points;
+    if (pts.length < 2) return;
+    const aIdx = selectedSegment;
+    const bIdx = (selectedSegment + 1) % pts.length;
+    const a = pts[aIdx];
+    const b = pts[bIdx];
+    if (!a || !b) return;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = (-dy / len) * (meters * 1000);
+    const ny = (dx / len) * (meters * 1000);
+    const next = pts.map((p) => ({ ...p }));
+    next[aIdx] = { x: a.x + nx, y: a.y + ny };
+    next[bIdx] = { x: b.x + nx, y: b.y + ny };
+    handlePointsChange(next);
+  };
+
+  const handleCanvasClick = (pt: { x: number; y: number }) => {
+    // If drawing, use the wall drawing hook's handler
+    if (isDrawingWall) {
+      wallDrawingClick(pt);
+      return;
+    }
+    // If not drawing, treat as deselect interaction
+    setSelectedSegment(null);
+    setHoveredSegment(null);
+  };
+
+  const snapPointToGrid = useCallback((pt: { x: number; y: number }) => {
+    if (!snapGridMm || snapGridMm <= 0) return pt;
+    const step = snapGridMm;
+    return {
+      x: Math.round(pt.x / step) * step,
+      y: Math.round(pt.y / step) * step,
+    };
+  }, [snapGridMm]);
+
+  const insertPointOnSegment = useCallback((segmentIndex: number, point?: { x: number; y: number }) => {
+    if (!selectedRoom?.roomShell?.points) return;
+    if (isDrawingWall || isDoorPlacementMode) return;
+    const pts = selectedRoom.roomShell.points;
+    if (pts.length < 2) return;
+    const a = pts[segmentIndex];
+    const b = pts[(segmentIndex + 1) % pts.length];
+    if (!a || !b) return;
+    const rawPoint = point ?? { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const snapped = snapPointToGrid(rawPoint);
+    const minDist = Math.min(
+      Math.hypot(snapped.x - a.x, snapped.y - a.y),
+      Math.hypot(snapped.x - b.x, snapped.y - b.y),
+    );
+    if (minDist < 50) return;
+    const insertIndex = segmentIndex === pts.length - 1 ? pts.length : segmentIndex + 1;
+    const next = [...pts];
+    next.splice(insertIndex, 0, snapped);
+    handlePointsChange(next);
+    setSelectedSegment(segmentIndex);
+  }, [selectedRoom, isDrawingWall, isDoorPlacementMode, snapPointToGrid, handlePointsChange]);
+
+  const handleCanvasMove = (pt: { x: number; y: number }) => {
+    setCursorPos(pt);
+    if (pendingStart) {
+      const dx = pt.x - pendingStart.x;
+      const dy = pt.y - pendingStart.y;
+      setCursorDelta({ dx, dy, len: Math.hypot(dx, dy) });
+    } else {
+      setCursorDelta(null);
+    }
+
+    // Handle door dragging
+    if (doorDrag) {
+      handleDoorDragMove(pt.x, pt.y);
+      return;
+    }
+
+    if (endpointDrag && selectedRoom) {
+      let dx = pt.x - endpointDrag.start.x;
+      let dy = pt.y - endpointDrag.start.y;
+      if (angleSnapEnabled) {
+        ({ dx, dy } = snapDelta(dx, dy));
+      }
+      const next = endpointDrag.base.map((p) => ({ x: p.x, y: p.y }));
+      if (!next.length) return;
+      const targetIdx =
+        endpointDrag.endpoint === 'start' ? endpointDrag.segment : (endpointDrag.segment + 1) % next.length;
+      const snappedTarget = snapPointToGrid({
+        x: endpointDrag.base[targetIdx].x + dx,
+        y: endpointDrag.base[targetIdx].y + dy,
+      });
+      // apply snapped delta relative to base so shape stays consistent
+      const adjDx = snappedTarget.x - endpointDrag.base[targetIdx].x;
+      const adjDy = snappedTarget.y - endpointDrag.base[targetIdx].y;
+      next[targetIdx] = { x: endpointDrag.base[targetIdx].x + adjDx, y: endpointDrag.base[targetIdx].y + adjDy };
+      handlePointsChange(next);
+      return;
+    }
+
+    // If dragging a segment, move both endpoints together.
+    if (segmentDragIndex !== null && segmentDragStart && segmentDragBase && selectedRoom) {
+      let dx = pt.x - segmentDragStart.x;
+      let dy = pt.y - segmentDragStart.y;
+      if (angleSnapEnabled) {
+        ({ dx, dy } = snapDelta(dx, dy));
+      }
+      const next = segmentDragBase.map((p) => ({ x: p.x, y: p.y }));
+      const aIdx = segmentDragIndex;
+      const bIdx = (segmentDragIndex + 1) % next.length;
+      const snappedA = snapPointToGrid({ x: segmentDragBase[aIdx].x + dx, y: segmentDragBase[aIdx].y + dy });
+      const snappedB = snapPointToGrid({ x: segmentDragBase[bIdx].x + dx, y: segmentDragBase[bIdx].y + dy });
+      next[aIdx] = snappedA;
+      next[bIdx] = snappedB;
+      handlePointsChange(next);
+      return;
+    }
+
+    // If drawing walls, use the hook's handler
+    if (isDrawingWall) {
+      wallDrawingMove(pt);
+    }
+  };
+
+  const handleSaveRoom = async (): Promise<boolean> => {
+    if (!selectedRoom) return false;
+    setSaving(true);
+    try {
+      const result = await updateRoom(selectedRoom.id, selectedRoom);
+      setRooms((prev) => prev.map((r) => (r.id === selectedRoom.id ? result.room : r)));
+      onWizardProgress?.({ outlineDone: true, placementDone: true });
+      setError(null);
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save room');
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const navigateWithSave = useCallback(
+    async (view: 'wizard' | 'zoneEditor' | 'roomBuilder' | 'settings' | 'liveDashboard') => {
+      if (!onNavigate) return;
+      if (selectedRoom) {
+        const saved = await handleSaveRoom();
+        if (!saved) return;
+      }
+      onNavigate(view);
+    },
+    [onNavigate, selectedRoom, handleSaveRoom]
+  );
+
+  const handleAutoZoom = useCallback((room: RoomConfig | null) => {
+    if (!room?.roomShell?.points?.length) {
+      setZoom(1);
+      setPanOffsetMm({ x: 0, y: 0 });
+      return;
+    }
+    const pts = room.roomShell.points;
+    const xs = pts.map((p) => p.x);
+    const ys = pts.map((p) => p.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const pad = 500; // mm margin
+    const width = Math.max(100, maxX - minX + pad * 2);
+    const height = Math.max(100, maxY - minY + pad * 2);
+    const maxDim = Math.max(width, height);
+    // zoom formula: target canvas coverage ~80%
+    const targetZoom = Math.min(5, Math.max(0.1, (0.8 * rangeMm) / maxDim));
+    setZoom(targetZoom);
+    setPanOffsetMm({ x: (minX + maxX) / 2, y: (minY + maxY) / 2 });
+  }, [rangeMm]);
+
+  // Auto-zoom when room loads
+  useEffect(() => {
+    if (!selectedRoom) return;
+    if (selectedRoom.roomShell?.points?.length) {
+      handleAutoZoom(selectedRoom);
+      return;
+    }
+    setZoom(1);
+    setPanOffsetMm({ x: 0, y: 0 });
+  }, [selectedRoom?.id, handleAutoZoom]);
+
+  useEffect(() => {
+    if (!isMobileCanvas) {
+      setActiveMobileSheet(null);
+    }
+  }, [isMobileCanvas]);
+
+  const handleRoomSelection = useCallback((roomId: string | null) => {
+    setSelectedRoomId(roomId);
+    const room = rooms.find((candidate) => candidate.id === roomId);
+    if (room?.profileId) setSelectedProfileId(room.profileId);
+  }, [rooms]);
+
+  const toggleMobileToolsSheet = () => {
+    setShowSettings(false);
+    setActiveMobileSheet((current) => current === 'tools' ? null : 'tools');
+  };
+
+  const toggleMobileSettingsSheet = () => {
+    setActiveMobileSheet(null);
+    setShowSettings((current) => !current);
+  };
+
+  const toggleMobileZoomSheet = () => {
+    setShowSettings(false);
+    setActiveMobileSheet((current) => current === 'zoom' ? null : 'zoom');
+  };
+
+  const isSuggestionApplied =
+    currentInstallationAngle !== null &&
+    rotationSuggestion &&
+    rotationSuggestion.suggestedAngle === currentInstallationAngle;
+  const isZeroSuggestion = rotationSuggestion?.suggestedAngle === 0;
+
+  return (
+    <div className="fixed inset-0 bg-slate-950 overflow-hidden">
+      {/* Error Toast */}
+      {error && (
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-50 max-w-lg rounded-xl border border-rose-500/50 bg-rose-500/10 backdrop-blur px-6 py-3 text-rose-100 shadow-xl animate-in slide-in-from-top-4 fade-in">
+          {error}
+        </div>
+      )}
+
+      {/* Installation Angle Suggestion Modal */}
+      {showRotationSuggestion && rotationSuggestion && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowRotationSuggestion(false)}
+          />
+          {/* Modal */}
+          <div className="relative z-10 w-full max-w-md mx-4 rounded-2xl border border-slate-700/50 bg-slate-900/95 backdrop-blur shadow-2xl animate-in zoom-in-95 fade-in duration-200">
+            <div className="p-6">
+              <div className="flex justify-center mb-4">
+                <div className="w-12 h-12 rounded-full bg-amber-500/20 flex items-center justify-center">
+                  <span className="text-xl">!</span>
+                </div>
+              </div>
+              <h3 className="text-xl font-bold text-white text-center mb-2">
+                Align zones to your walls?
+              </h3>
+              <p className="text-sm text-slate-300 text-center mb-4">
+                Based on your room outline, we can set the Installation Angle so zones stay square to the walls.
+              </p>
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-center text-amber-200 text-sm font-semibold mb-4">
+                Suggested Installation Angle: {rotationSuggestion.suggestedAngle > 0 ? "+" : ""}{rotationSuggestion.suggestedAngle} deg
+              </div>
+              {isZeroSuggestion && !rotationSuggestionError && !isSuggestionApplied && (
+                <div className="mb-4 text-sm text-slate-300 text-center">
+                  Rotation already aligns with your walls. Installation angle can stay at 0.
+                </div>
+              )}
+              {isSuggestionApplied && !rotationSuggestionError && (
+                <div className="mb-4 text-sm text-emerald-300 text-center">
+                  Installation angle is already set to this value.
+                </div>
+              )}
+              {rotationSuggestionError && (
+                <div className="mb-4 text-sm text-rose-300 text-center">
+                  {rotationSuggestionError}
+                </div>
+              )}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowRotationSuggestion(false)}
+                  className="flex-1 rounded-xl border border-slate-600 bg-slate-800 px-4 py-2.5 text-sm font-semibold text-slate-200 transition-all hover:bg-slate-700 active:scale-95"
+                >
+                  Not now
+                </button>
+                <button
+                  onClick={applyInstallationAngleSuggestion}
+                  disabled={applyingInstallationAngle || isSuggestionApplied}
+                  className="flex-1 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-amber-500/30 transition-all hover:shadow-xl hover:shadow-amber-500/40 disabled:opacity-50 active:scale-95"
+                >
+                  {isSuggestionApplied ? 'Already set' : applyingInstallationAngle ? 'Applying...' : 'Apply'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="md:hidden">
+        <CanvasTopBar
+          left={onBack && !onNavigate ? (
+            <button
+              type="button"
+              onClick={onBack}
+              className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm font-semibold text-slate-100"
+            >
+              Back
+            </button>
+          ) : onNavigate ? (
+            <button
+              type="button"
+              onClick={() => setActiveMobileSheet('navigation')}
+              className="min-h-[40px] rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm font-semibold text-slate-100"
+            >
+              Menu
+            </button>
+          ) : null}
+          title={rooms.length > 0 ? (
+            <select
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm font-semibold text-slate-100 focus:border-aqua-500 focus:outline-none focus:ring-1 focus:ring-aqua-500/50"
+              value={selectedRoomId ?? ''}
+              onChange={(event) => handleRoomSelection(event.target.value || null)}
+            >
+              <option value="">Select room</option>
+              {rooms.map((room) => (
+                <option key={room.id} value={room.id}>
+                  {room.name}
+                </option>
+              ))}
+            </select>
+          ) : 'Room Builder'}
+          right={(
+            <button
+              type="button"
+              onClick={handleSaveRoom}
+              disabled={saving || !selectedRoom}
+              className="min-h-[40px] rounded-lg bg-aqua-600 px-3 text-xs font-bold text-white shadow-lg shadow-aqua-500/20 disabled:opacity-50"
+            >
+              {saving ? 'Saving' : 'Save'}
+            </button>
+          )}
+        />
+      </div>
+
+      {/* Navigation (top left) */}
+      {onBack && !onNavigate && (
+        <button
+          onClick={onBack}
+          className="absolute top-6 left-6 z-40 hidden group rounded-xl border border-slate-700/50 bg-slate-900/90 backdrop-blur px-4 py-2.5 text-sm font-semibold text-slate-100 shadow-lg transition-all hover:border-slate-600 hover:bg-slate-800 hover:shadow-xl active:scale-95 md:block"
+        >
+          <span className="inline-block transition-transform group-hover:-translate-x-0.5">←</span> Back
+        </button>
+      )}
+
+      {onNavigate && (
+        <div className={`absolute top-6 left-6 hidden md:block ${showNavMenu ? 'z-[60]' : 'z-40'}`}>
+          <button
+            onClick={() => setShowNavMenu(!showNavMenu)}
+            className="group rounded-xl border border-slate-700/50 bg-slate-900/90 backdrop-blur px-4 py-2.5 text-sm font-semibold text-slate-100 shadow-lg transition-all hover:border-slate-600 hover:bg-slate-800 hover:shadow-xl active:scale-95"
+          >
+            <span className="inline-block transition-transform group-hover:rotate-90">☰</span> Menu
+          </button>
+
+          {showNavMenu && (
+            <>
+              {/* Backdrop to close menu */}
+              <div
+                className="fixed inset-0 z-30"
+                onClick={() => setShowNavMenu(false)}
+              />
+
+              {/* Menu dropdown */}
+              <div className="absolute top-14 left-0 z-50 min-w-[200px] rounded-xl border border-slate-700/50 bg-slate-900/95 backdrop-blur shadow-2xl overflow-hidden">
+                <div className="p-2 space-y-1">
+                  <button
+                    onClick={async () => {
+                      await navigateWithSave('liveDashboard');
+                      setShowNavMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-100 rounded-lg transition-all hover:bg-aqua-600/20 hover:text-aqua-400 active:scale-95"
+                  >
+                    📡 Live Dashboard
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await navigateWithSave('wizard');
+                      setShowNavMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-100 rounded-lg transition-all hover:bg-aqua-600/20 hover:text-aqua-400 active:scale-95"
+                  >
+                    ➕ Add Device
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await navigateWithSave('zoneEditor');
+                      setShowNavMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-100 rounded-lg transition-all hover:bg-aqua-600/20 hover:text-aqua-400 active:scale-95"
+                  >
+                    📐 Zone Editor
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await navigateWithSave('settings');
+                      setShowNavMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-100 rounded-lg transition-all hover:bg-aqua-600/20 hover:text-aqua-400 active:scale-95"
+                  >
+                    ⚙️ Settings
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Floating Save Button (top right) */}
+      <button
+        onClick={handleSaveRoom}
+        disabled={saving}
+        className={`absolute top-6 z-40 hidden rounded-xl bg-gradient-to-r from-aqua-600 to-aqua-500 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-aqua-500/30 transition-all hover:shadow-xl hover:shadow-aqua-500/40 disabled:opacity-50 active:scale-95 md:block ${desktopEditorOpen ? 'right-[22rem]' : 'right-6'}`}
+      >
+        {saving ? 'Saving...' : 'Save Room'}
+      </button>
+
+      {/* Canvas Content - Full Page */}
+      {!selectedRoom && (
+        <div className="flex h-full w-full items-center justify-center">
+          <div className="max-w-md rounded-2xl border border-slate-700 bg-gradient-to-br from-slate-900 to-slate-800 p-8 shadow-2xl">
+            <div className="text-center space-y-4">
+              <div className="text-6xl">🏗️</div>
+              <h2 className="text-2xl font-bold text-white">No Room Selected</h2>
+              <p className="text-sm text-slate-300">Select a room from the controls to start drawing walls.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedRoom && (
+        <div
+          className="h-full w-full overflow-hidden overscroll-contain touch-none"
+          onWheelCapture={(e) => {
+            if (isCanvasDragging) return;
+            if (e.cancelable) e.preventDefault();
+            if ((e.nativeEvent as any)?.cancelable) {
+              (e.nativeEvent as any).preventDefault();
+            }
+            e.stopPropagation();
+            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+            setZoom((z) => Math.min(5, Math.max(0.1, z + delta)));
+          }}
+        >
+                <RoomCanvas
+                  points={selectedRoom.roomShell?.points ?? []}
+                  onChange={handlePointsChange}
+                  onAddPoint={undefined}
+                  onCanvasClick={handleCanvasClick}
+                  onCanvasMove={handleCanvasMove}
+                  onCanvasRelease={() => {
+                    setSegmentDragIndex(null);
+                    setSegmentDragStart(null);
+                    setSegmentDragBase(null);
+                    setEndpointDrag(null);
+                    setCursorPos(null);
+                    setCursorDelta(null);
+                    handleDoorDragEnd();
+                    setIsCanvasDragging(false);
+                  }}
+                  onDragStateChange={setIsCanvasDragging}
+                  rangeMm={rangeMm}
+                  gridSpacingMm={1000}
+                  snapGridMm={snapGridMm}
+                  zoom={zoom}
+                  panOffsetMm={panOffsetMm}
+                  onPanChange={(next) => setPanOffsetMm(next)}
+                  onZoomChange={setZoom}
+                  touchPanEnabled={!isDrawingWall && !isDoorPlacementMode}
+                  displayUnits={displayUnits}
+                  devicePlacement={
+                    selectedRoom.devicePlacement ?? {
+                      x: 0,
+                      y: 0,
+                      rotationDeg: 0,
+                    }
+                  }
+                  onDeviceChange={(placement) => updateDevicePlacement(placement)}
+                  fieldOfViewDeg={coverageFov?.horizontalFovDeg ?? selectedProfile?.limits?.fieldOfViewDegrees}
+                  maxRangeMeters={effectiveCoverageMaxRangeMeters}
+                  deviceIconUrl={deviceIconUrl}
+                  clipRadarToWalls={clipRadarToWalls}
+                  heightCoverage={heightCoverageConfig ?? undefined}
+                  showRadar={showDeviceRadar && !isCeilingMount}
+                  previewFrom={pendingStart}
+                  previewTo={pendingStart && previewPoint ? previewPoint : null}
+                  hoveredSegment={hoveredSegment}
+                  selectedSegment={selectedSegment}
+                  onSegmentHover={(idx) => setHoveredSegment(idx)}
+                  onSegmentSelect={(idx) => {
+                    setSelectedSegment(idx);
+                    setSegmentDragIndex(null);
+                    setSegmentDragStart(null);
+                    setSegmentDragBase(null);
+                    setEndpointDrag(null);
+                  }}
+                  onSegmentDragStart={(idx, start) => {
+                    const pts = selectedRoom?.roomShell?.points ?? [];
+                    if (!pts.length) return;
+                    setSegmentDragIndex(idx);
+                    setSegmentDragStart(start);
+                    setSegmentDragBase(pts);
+                    setEndpointDrag(null);
+                  }}
+                  onEndpointDragStart={(segment, endpoint, start) => {
+                    const pts = selectedRoom?.roomShell?.points ?? [];
+                    if (!pts.length) return;
+                    setEndpointDrag({ segment, endpoint, start, base: pts });
+                    setSegmentDragIndex(null);
+                    setSegmentDragStart(null);
+                    setSegmentDragBase(null);
+                  }}
+                  onSegmentInsert={
+                    !isDrawingWall && !isDoorPlacementMode
+                      ? (segmentIndex, point) => {
+                        insertPointOnSegment(segmentIndex, point);
+                      }
+                      : undefined
+                  }
+                  height="100%"
+                  furniture={selectedRoom.furniture ?? []}
+                  selectedFurnitureId={selectedFurnitureId}
+                  onFurnitureSelect={(id) => {
+                    setSelectedFurnitureId(id);
+                    setShowFurnitureLibrary(false);
+                  }}
+                  onFurnitureChange={handleFurnitureChange}
+                  doors={selectedRoom.doors ?? []}
+                  selectedDoorId={selectedDoorId}
+                  onDoorSelect={setSelectedDoorId}
+                  onDoorChange={handleDoorChange}
+                  isDoorPlacementMode={isDoorPlacementMode}
+                  onWallSegmentClick={handleWallSegmentClick}
+                  onDoorDragStart={handleDoorDragStart}
+                  onDoorDragMove={handleDoorDragMove}
+                  onDoorDragEnd={handleDoorDragEnd}
+                  roomShellFillMode={selectedRoom.roomShellFillMode}
+                  floorMaterial={selectedRoom.floorMaterial}
+                  showWalls={showWalls}
+                  showFurniture={showFurniture}
+                  showDoors={showDoors}
+                  showDevice={showDeviceIcon}
+                  renderOverlay={({ toCanvas }) => {
+                    if (!showTargets) return null;
+
+                    const targetColors = [
+                      { fill: '#3b82f6', fillOpacity: 'rgba(59, 130, 246, 0.2)' },
+                      { fill: '#10b981', fillOpacity: 'rgba(16, 185, 129, 0.2)' },
+                      { fill: '#f59e0b', fillOpacity: 'rgba(245, 158, 11, 0.2)' },
+                    ];
+
+                    if (isCeilingSliceMode && liveState?.targets?.length) {
+                      return (
+                        <g style={{ pointerEvents: 'none' }}>
+                          {liveState.targets.map((target, idx) => {
+                            if (target.active === false) return null;
+                            const lateral = getCeilingSlicePosition(target, ceilingSliceConfig);
+                            if (lateral === null) return null;
+                            const depth = getCeilingSliceLineDepth(lateral, ceilingSliceConfig, heightCoverageConfig, trackingMaxRangeMm);
+                            if (!depth) return null;
+                            const endpoints = ceilingSliceConfig.axis === 'x'
+                              ? [
+                                  deviceLocalToRoom(lateral, depth.min),
+                                  deviceLocalToRoom(lateral, depth.max),
+                                ]
+                              : [
+                                  deviceLocalToRoom(depth.min, lateral),
+                                  deviceLocalToRoom(depth.max, lateral),
+                                ];
+                            const start = toCanvas(endpoints[0]);
+                            const end = toCanvas(endpoints[1]);
+                            const label = toCanvas(deviceLocalToRoom(
+                              ceilingSliceConfig.axis === 'x' ? lateral : 0,
+                              ceilingSliceConfig.axis === 'x' ? 0 : lateral,
+                            ));
+                            const colors = targetColors[idx % targetColors.length];
+                            return (
+                              <g key={target.id}>
+                                <line
+                                  x1={start.x}
+                                  y1={start.y}
+                                  x2={end.x}
+                                  y2={end.y}
+                                  stroke="rgba(15, 23, 42, 0.85)"
+                                  strokeWidth={8 * targetMarkerScale}
+                                  strokeLinecap="round"
+                                  opacity={0.9}
+                                />
+                                <line
+                                  x1={start.x}
+                                  y1={start.y}
+                                  x2={end.x}
+                                  y2={end.y}
+                                  stroke={colors.fill}
+                                  strokeWidth={4 * targetMarkerScale}
+                                  strokeLinecap="round"
+                                  opacity={0.95}
+                                  strokeDasharray="10 7"
+                                />
+                                <circle
+                                  cx={label.x}
+                                  cy={label.y}
+                                  r={8 * targetMarkerScale}
+                                  fill={colors.fill}
+                                  stroke="white"
+                                  strokeWidth={2 * targetMarkerScale}
+                                />
+                                <text
+                                  x={label.x}
+                                  y={label.y - (14 * targetMarkerScale)}
+                                  textAnchor="middle"
+                                  fill="white"
+                                  fontSize={12 * targetMarkerScale}
+                                  fontWeight="bold"
+                                  className="pointer-events-none"
+                                  style={{ filter: 'drop-shadow(0 1px 2px rgb(0 0 0 / 0.9))' }}
+                                >
+                                  T{target.id}
+                                </text>
+                              </g>
+                            );
+                          })}
+                        </g>
+                      );
+                    }
+
+                    if (!targetPositions?.length) return null;
+
+                    return (
+                      <g style={{ pointerEvents: 'none' }}>
+                        {targetPositions.map((target, idx) => {
+                          const pos = toCanvas({ x: target.x, y: target.y });
+                          const colors = targetColors[idx % targetColors.length];
+                          return (
+                            <g key={target.id}>
+                              {/* Outer pulsing circle */}
+                              <circle
+                                cx={pos.x}
+                                cy={pos.y}
+                                r={25 * targetMarkerScale}
+                                fill={colors.fillOpacity}
+                                stroke={colors.fill}
+                                strokeWidth={1.5 * targetMarkerScale}
+                              />
+                              {/* Inner solid dot */}
+                              <circle
+                                cx={pos.x}
+                                cy={pos.y}
+                                r={10 * targetMarkerScale}
+                                fill={colors.fill}
+                              />
+                              {/* Label */}
+                              <text
+                                x={pos.x}
+                                y={pos.y - (35 * targetMarkerScale)}
+                                fill={colors.fill}
+                                fontSize={12 * targetMarkerScale}
+                                fontWeight="600"
+                                textAnchor="middle"
+                              >
+                                T{target.id}
+                              </text>
+                            </g>
+                          );
+                        })}
+                      </g>
+                    );
+                  }}
+                />
+          {/* Floating Room Selector (top center) */}
+          <div className="absolute top-6 left-1/2 z-40 hidden -translate-x-1/2 items-center gap-2 rounded-xl border border-slate-700/50 bg-slate-900/90 backdrop-blur px-4 py-2.5 text-sm text-slate-200 shadow-xl md:flex">
+            <span className="text-slate-400 font-medium">Room:</span>
+            <select
+              className="rounded-lg border border-slate-700 bg-slate-800/70 px-3 py-1.5 text-slate-100 transition-colors focus:border-aqua-500 focus:ring-1 focus:ring-aqua-500/50 focus:outline-none font-medium"
+              value={selectedRoomId ?? ''}
+              onChange={(e) => {
+                handleRoomSelection(e.target.value || null);
+              }}
+            >
+              <option value="">Select room</option>
+              {rooms.map((room) => (
+                <option key={room.id} value={room.id}>
+                  {room.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Drawing Controls (left side) */}
+          <div className="absolute top-24 left-6 z-40 hidden rounded-xl border border-slate-700/50 bg-slate-900/90 backdrop-blur p-3 shadow-xl md:block">
+            <div className="flex flex-col gap-2 text-sm">
+              <button
+                className={`rounded-xl border px-4 py-2.5 font-semibold shadow-lg transition-all active:scale-95 ${
+                  isDrawingWall
+                    ? 'border-aqua-600/50 bg-aqua-600/20 text-aqua-100 hover:bg-aqua-600/30'
+                    : 'border-slate-700/50 bg-slate-800/50 text-slate-200 hover:border-slate-600'
+                }`}
+                onClick={() => setIsDrawingWall((prev) => !prev)}
+              >
+                {isDrawingWall ? '✕ Stop (Esc)' : '✏️ Add wall (A)'}
+              </button>
+              <button
+                className="rounded-xl border border-emerald-600/50 bg-emerald-600/10 px-4 py-2.5 font-semibold text-emerald-100 shadow-lg transition-all hover:bg-emerald-600/20 disabled:opacity-40 active:scale-95"
+                onClick={handleCloseLoop}
+                disabled={!selectedRoom || (selectedRoom.roomShell?.points?.length ?? 0) < 2}
+              >
+                ✓ Finish (Enter)
+              </button>
+              <button
+                className="rounded-xl border border-amber-600/50 bg-amber-600/10 px-4 py-2.5 font-semibold text-amber-100 shadow-lg transition-all hover:bg-amber-600/20 disabled:opacity-40 active:scale-95"
+                onClick={removeLastPoint}
+                disabled={!selectedRoom || !(selectedRoom.roomShell?.points?.length)}
+              >
+                ↶ Undo (Del)
+              </button>
+              <button
+                className="rounded-xl border border-rose-600/50 bg-rose-600/10 px-4 py-2.5 font-semibold text-rose-100 shadow-lg transition-all hover:bg-rose-600/20 disabled:opacity-40 active:scale-95"
+                onClick={handleClear}
+                disabled={!selectedRoom}
+              >
+                🗑️ Clear
+              </button>
+
+              {/* Furniture Button */}
+              <div className="border-t border-slate-700/50 my-2"></div>
+              <button
+                className={`rounded-xl border px-4 py-2.5 font-semibold shadow-lg transition-all active:scale-95 ${
+                  showFurnitureLibrary
+                    ? 'border-purple-600/50 bg-purple-600/20 text-purple-100'
+                    : 'border-slate-700/50 bg-slate-800/50 text-slate-200 hover:border-slate-600'
+                }`}
+                onClick={() => {
+                  setShowFurnitureLibrary((v) => !v);
+                  setSelectedFurnitureId(null); // Close furniture settings when opening library
+                }}
+                disabled={!selectedRoom}
+              >
+                🪑 Add Furniture
+              </button>
+
+              <button
+                className={`rounded-xl border px-4 py-2.5 font-semibold shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  isDoorPlacementMode
+                    ? 'border-aqua-600/50 bg-aqua-600/20 text-aqua-100 hover:bg-aqua-600/30'
+                    : 'border-slate-700/50 bg-slate-800/50 text-slate-200 hover:border-slate-600'
+                }`}
+                onClick={handleAddDoor}
+                disabled={!selectedRoom || !selectedRoom.roomShell?.points || selectedRoom.roomShell.points.length < 3}
+              >
+                {isDoorPlacementMode ? '✕ Cancel' : '🚪 Add Door'}
+              </button>
+
+            </div>
+          </div>
+
+          {/* Floating Zoom Controls (bottom right) */}
+          <div className="absolute bottom-6 right-6 z-40 hidden flex-col gap-2 md:flex">
+            <button
+              className="rounded-xl border border-slate-700/50 bg-slate-900/90 backdrop-blur px-4 py-2.5 text-sm font-semibold text-slate-100 shadow-lg transition-all hover:border-slate-600 hover:bg-slate-800 hover:shadow-xl active:scale-95"
+              onClick={() => setZoom((z) => Math.min(5, z + 0.1))}
+            >
+              Zoom +
+            </button>
+            <button
+              className="rounded-xl border border-slate-700/50 bg-slate-900/90 backdrop-blur px-4 py-2.5 text-sm font-semibold text-slate-100 shadow-lg transition-all hover:border-slate-600 hover:bg-slate-800 hover:shadow-xl active:scale-95"
+              onClick={() => setZoom((z) => Math.max(0.1, z - 0.1))}
+            >
+              Zoom -
+            </button>
+            <button
+              className="rounded-xl border border-slate-700/50 bg-slate-900/90 backdrop-blur px-4 py-2.5 text-sm font-semibold text-slate-100 shadow-lg transition-all hover:border-slate-600 hover:bg-slate-800 hover:shadow-xl active:scale-95"
+              onClick={() => setZoom(1)}
+            >
+              Reset
+            </button>
+            <button
+              className="rounded-xl border border-aqua-600/50 bg-aqua-600/10 backdrop-blur px-4 py-2.5 text-sm font-semibold text-aqua-100 shadow-lg transition-all hover:bg-aqua-600/20 hover:shadow-xl active:scale-95"
+              onClick={() => handleAutoZoom(selectedRoom)}
+            >
+              Auto Zoom
+            </button>
+            <button
+              className={`rounded-xl border backdrop-blur px-4 py-2.5 text-sm font-semibold shadow-lg transition-all hover:shadow-xl active:scale-95 ${
+                showSettings
+                  ? 'border-aqua-600/50 bg-aqua-600/20 text-aqua-100'
+                  : 'border-slate-700/50 bg-slate-900/90 text-slate-100 hover:border-slate-600 hover:bg-slate-800'
+              }`}
+              onClick={() => setShowSettings((v) => !v)}
+            >
+              Settings
+            </button>
+          </div>
+
+          {/* Settings Panel */}
+          {showSettings && (
+            <div className="absolute bottom-0 left-0 right-0 z-[80] max-h-[82dvh] overflow-y-auto rounded-t-2xl border-t border-slate-700 bg-slate-900/95 p-4 text-sm text-slate-100 shadow-2xl mobile-safe-bottom mobile-sheet-panel md:top-24 md:bottom-auto md:left-auto md:right-6 md:w-96 md:max-h-[calc(100vh-8rem)] md:max-w-full md:rounded-xl md:border md:border-slate-700/50 md:backdrop-blur md:animate-in md:slide-in-from-right-4 md:fade-in md:duration-200">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-100">Settings</span>
+                        <button
+                          className="rounded-md border border-slate-700 px-2 py-1 hover:border-aqua-500"
+                          onClick={() => setShowSettings(false)}
+                        >
+                          Close
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-1 rounded-lg border border-slate-700/60 bg-slate-950/50 p-1">
+                        {[
+                          ['display', 'Display'],
+                          ['device', 'Device'],
+                          ['canvas', 'Canvas'],
+                          ['floor', 'Floor'],
+                        ].map(([tab, label]) => (
+                          <button
+                            key={tab}
+                            type="button"
+                            onClick={() => setSettingsTab(tab as RoomBuilderSettingsTab)}
+                            className={`rounded-md px-2 py-1.5 text-xs font-semibold transition ${
+                              settingsTab === tab
+                                ? 'bg-aqua-600/20 text-aqua-100'
+                                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {settingsTab === 'canvas' && (
+                      <div className="space-y-1">
+                        <div className="font-semibold text-slate-200">Canvas</div>
+                        <label className="flex items-center gap-2">
+                          <span className="w-16">Snap (mm)</span>
+                          <input
+                            type="number"
+                            className="w-20 rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-slate-100 focus:border-aqua-500 focus:ring-1 focus:ring-aqua-500/50 focus:outline-none"
+                            value={snapGridMm}
+                            onChange={(e) => setSnapGridMm(Math.max(0, Number(e.target.value) || 0))}
+                            min={0}
+                            step={50}
+                          />
+                          <span className="text-slate-400">0=off</span>
+                        </label>
+                        <div className="flex flex-wrap gap-1">
+                          {[0, 50, 100, 200].map((v) => (
+                            <button
+                              key={v}
+                              className={`rounded-md border px-2 py-1 ${
+                                snapGridMm === v ? 'border-aqua-500 text-aqua-100' : 'border-slate-700 text-slate-200'
+                              }`}
+                              onClick={() => setSnapGridMm(v)}
+                            >
+                              {v === 0 ? 'Off' : `${v}mm`}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex gap-1">
+                          <button
+                            className={`rounded-md border px-2 py-1 ${
+                              displayUnits === 'metric' ? 'border-aqua-500 text-aqua-100' : 'border-slate-700 text-slate-200'
+                            }`}
+                            onClick={() => setDisplayUnits('metric')}
+                          >
+                            Metric
+                          </button>
+                          <button
+                            className={`rounded-md border px-2 py-1 ${
+                              displayUnits === 'imperial' ? 'border-aqua-500 text-aqua-100' : 'border-slate-700 text-slate-200'
+                            }`}
+                            onClick={() => setDisplayUnits('imperial')}
+                          >
+                            Imperial
+                          </button>
+                        </div>
+                      </div>
+                      )}
+
+                      {settingsTab === 'device' && (
+                      <div className="space-y-1">
+                        <div className="font-semibold text-slate-200">Device placement</div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="flex items-center gap-2">
+                            <span className="w-6">X</span>
+                            <input
+                              type="number"
+                              className="w-full rounded-md border border-slate-700 bg-slate-800/70 px-2 py-1 text-slate-100 focus:border-aqua-500 focus:ring-1 focus:ring-aqua-500/50 focus:outline-none"
+                              value={selectedRoom?.devicePlacement?.x ?? 0}
+                              onChange={(e) => {
+                                updateDevicePlacement({ x: Number(e.target.value) || 0 });
+                              }}
+                            />
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <span className="w-6">Y</span>
+                            <input
+                              type="number"
+                              className="w-full rounded-md border border-slate-700 bg-slate-800/70 px-2 py-1 text-slate-100 focus:border-aqua-500 focus:ring-1 focus:ring-aqua-500/50 focus:outline-none"
+                              value={selectedRoom?.devicePlacement?.y ?? 0}
+                              onChange={(e) => {
+                                updateDevicePlacement({ y: Number(e.target.value) || 0 });
+                              }}
+                            />
+                          </label>
+                        </div>
+                        <label className="flex items-center gap-2">
+                          <span className="w-14">Rotation</span>
+                          <input
+                            type="range"
+                            min={-180}
+                            max={180}
+                            step={1}
+                            value={selectedRoom?.devicePlacement?.rotationDeg ?? 0}
+                            onChange={(e) => {
+                              updateDevicePlacement({ rotationDeg: Number(e.target.value) || 0 });
+                            }}
+                            onMouseUp={(e) => {
+                              handleRotationSuggestion(Number((e.currentTarget as HTMLInputElement).value) || 0);
+                            }}
+                            onTouchEnd={(e) => {
+                              handleRotationSuggestion(Number((e.currentTarget as HTMLInputElement).value) || 0);
+                            }}
+                            className="w-full"
+                          />
+                          <span>{selectedRoom?.devicePlacement?.rotationDeg ?? 0}</span>
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            className="rounded-md border border-slate-700 px-2 py-1 text-[11px] font-semibold text-slate-100 transition hover:border-aqua-500"
+                            onClick={() => {
+                              updateDevicePlacement({ x: 0, y: 0 });
+                            }}
+                            disabled={!selectedRoom}
+                          >
+                            Center
+                          </button>
+                          <button
+                            className="rounded-md border border-slate-700 px-2 py-1 text-[11px] font-semibold text-slate-100 transition hover:border-aqua-500"
+                            onClick={() => {
+                              updateDevicePlacement({ rotationDeg: 0 });
+                            }}
+                            disabled={!selectedRoom}
+                          >
+                            Reset rot
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="flex items-center gap-2">
+                            <span className="w-14">Mount</span>
+                            <select
+                              className="w-full rounded-md border border-slate-700 bg-slate-800/70 px-2 py-1 text-slate-100 focus:border-aqua-500 focus:ring-1 focus:ring-aqua-500/50 focus:outline-none"
+                              value={selectedRoom?.devicePlacement?.mountType ?? 'wall'}
+                              onChange={(e) => {
+                                const value = e.target.value === 'ceiling' ? 'ceiling' : 'wall';
+                                updateDevicePlacement(
+                                  value === 'ceiling'
+                                    ? { mountType: value, pitchDeg: 90, heightMm: 2400 }
+                                    : { mountType: value }
+                                );
+                              }}
+                            >
+                              <option value="wall">Wall</option>
+                              <option value="ceiling">Ceiling</option>
+                            </select>
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <span className="w-14">Height</span>
+                            <input
+                              type="number"
+                              min={0}
+                              step={0.1}
+                              className="w-full rounded-md border border-slate-700 bg-slate-800/70 px-2 py-1 text-slate-100 focus:border-aqua-500 focus:ring-1 focus:ring-aqua-500/50 focus:outline-none"
+                              value={displayHeightMeters}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                if (raw === '') {
+                                  updateDevicePlacement({ heightMm: undefined });
+                                } else {
+                                  updateDevicePlacement({ heightMm: Math.round((Number(raw) || 0) * 1000) });
+                                }
+                              }}
+                              placeholder="m"
+                            />
+                            <span className="text-xs text-slate-400">m</span>
+                          </label>
+                        </div>
+                        <label className="flex items-center gap-2">
+                          <span className="w-14">Pitch</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={90}
+                            className="w-full rounded-md border border-slate-700 bg-slate-800/70 px-2 py-1 text-slate-100 focus:border-aqua-500 focus:ring-1 focus:ring-aqua-500/50 focus:outline-none"
+                            value={isCeilingMount ? 90 : (selectedRoom?.devicePlacement?.pitchDeg ?? '')}
+                            disabled={isCeilingMount}
+                            onChange={(e) => {
+                              if (isCeilingMount) return;
+                              const raw = e.target.value;
+                              if (raw === '') {
+                                updateDevicePlacement({ pitchDeg: undefined });
+                              } else {
+                                updateDevicePlacement({ pitchDeg: Number(raw) || 0 });
+                              }
+                            }}
+                            placeholder="deg"
+                          />
+                          <span className="text-xs text-slate-400">
+                            {isCeilingMount ? 'Locked to 90 degrees for ceiling mount' : '0 degrees = horizontal, 90 degrees = down'}
+                          </span>
+                        </label>
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Overlay Sensor</div>
+                          {coveragePresets ? (
+                            <>
+                              <label className="flex items-center gap-2">
+                                <span className="w-14">Sensor</span>
+                                <select
+                                  className="w-full rounded-md border border-slate-700 bg-slate-800/70 px-2 py-1 text-slate-100 focus:border-aqua-500 focus:ring-1 focus:ring-aqua-500/50 focus:outline-none"
+                                  value={coveragePresetId ?? 'default'}
+                                  onChange={(e) => {
+                                  const value = e.target.value;
+                                  if (value === 'default') {
+                                    updateDevicePlacement({
+                                      coveragePresetId: undefined,
+                                      horizontalFovDeg: undefined,
+                                      verticalFovDeg: undefined,
+                                    });
+                                    return;
+                                  }
+                                  if (value === 'custom') {
+                                    const defaultId = selectedProfile?.coverage?.defaultPresetId;
+                                    const fallbackPreset = (defaultId && coveragePresets[defaultId]) ?
+                                      coveragePresets[defaultId] :
+                                      coveragePresets[Object.keys(coveragePresets)[0]];
+                                    updateDevicePlacement({
+                                      coveragePresetId: 'custom',
+                                      horizontalFovDeg: selectedRoom?.devicePlacement?.horizontalFovDeg ?? fallbackPreset?.horizontalFovDeg ?? 120,
+                                      verticalFovDeg: selectedRoom?.devicePlacement?.verticalFovDeg ?? fallbackPreset?.verticalFovDeg ?? 70,
+                                    });
+                                    return;
+                                  }
+                                  const preset = coveragePresets[value];
+                                  if (preset) {
+                                    updateDevicePlacement({
+                                      coveragePresetId: value,
+                                      horizontalFovDeg: preset.horizontalFovDeg,
+                                      verticalFovDeg: preset.verticalFovDeg,
+                                    });
+                                  }
+                                  }}
+                                >
+                                  <option value="default">
+                                    Default {selectedProfile?.coverage?.defaultPresetId && coveragePresets[selectedProfile.coverage.defaultPresetId]
+                                      ? `(${coveragePresets[selectedProfile.coverage.defaultPresetId].label})`
+                                      : ''}
+                                  </option>
+                                  {Object.entries(coveragePresets).map(([id, preset]) => (
+                                    <option key={id} value={id}>
+                                      {preset.label} ({preset.horizontalFovDeg} deg x {preset.verticalFovDeg} deg)
+                                    </option>
+                                  ))}
+                                  <option value="custom">Custom</option>
+                                </select>
+                              </label>
+                              <div className="text-xs text-slate-400">
+                                Changes the visual overlay only. Zone limits still follow the tracking sensor.
+                              </div>
+                            </>
+                          ) : null}
+                          {(!coveragePresets || coveragePresetId === 'custom') && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="flex items-center gap-2">
+                                <span className="w-14">Horiz</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={180}
+                                  className="w-full rounded-md border border-slate-700 bg-slate-800/70 px-2 py-1 text-slate-100 focus:border-aqua-500 focus:ring-1 focus:ring-aqua-500/50 focus:outline-none"
+                                  value={selectedRoom?.devicePlacement?.horizontalFovDeg ?? ''}
+                                  onChange={(e) => {
+                                    const raw = e.target.value;
+                              if (raw === '') {
+                                updateDevicePlacement({ coveragePresetId: 'custom', horizontalFovDeg: undefined });
+                              } else {
+                                updateDevicePlacement({ coveragePresetId: 'custom', horizontalFovDeg: Number(raw) || 0 });
+                              }
+                                  }}
+                                  placeholder="deg"
+                                />
+                              </label>
+                              <label className="flex items-center gap-2">
+                                <span className="w-14">Vert</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={180}
+                                  className="w-full rounded-md border border-slate-700 bg-slate-800/70 px-2 py-1 text-slate-100 focus:border-aqua-500 focus:ring-1 focus:ring-aqua-500/50 focus:outline-none"
+                                  value={selectedRoom?.devicePlacement?.verticalFovDeg ?? ''}
+                                  onChange={(e) => {
+                                    const raw = e.target.value;
+                              if (raw === '') {
+                                updateDevicePlacement({ coveragePresetId: 'custom', verticalFovDeg: undefined });
+                              } else {
+                                updateDevicePlacement({ coveragePresetId: 'custom', verticalFovDeg: Number(raw) || 0 });
+                              }
+                                  }}
+                                  placeholder="deg"
+                                />
+                              </label>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      )}
+
+                      {settingsTab === 'floor' && (
+                      <div className="space-y-1">
+                        <div className="font-semibold text-slate-200">Floor Material</div>
+                        <label className="flex items-center gap-2">
+                          <span className="w-16">Fill Mode</span>
+                          <select
+                            className="w-full rounded-md border border-slate-700 bg-slate-800/70 px-2 py-1 text-slate-100 focus:border-aqua-500 focus:ring-1 focus:ring-aqua-500/50 focus:outline-none"
+                            value={selectedRoom?.roomShellFillMode ?? 'overlay'}
+                            onChange={(e) => {
+                              if (!selectedRoom) return;
+                              const nextRoom: RoomConfig = { ...selectedRoom, roomShellFillMode: e.target.value as 'overlay' | 'material' };
+                              setRooms((prev) => prev.map((r) => (r.id === selectedRoom.id ? nextRoom : r)));
+                            }}
+                          >
+                            <option value="overlay">Blue Overlay</option>
+                            <option value="material">Floor Material</option>
+                          </select>
+                        </label>
+                        {selectedRoom?.roomShellFillMode === 'material' && (
+                          <label className="flex items-center gap-2">
+                            <span className="w-16">Material</span>
+                            <select
+                              className="w-full rounded-md border border-slate-700 bg-slate-800/70 px-2 py-1 text-slate-100 focus:border-aqua-500 focus:ring-1 focus:ring-aqua-500/50 focus:outline-none"
+                              value={selectedRoom?.floorMaterial ?? 'none'}
+                              onChange={(e) => {
+                                if (!selectedRoom) return;
+                                const nextRoom: RoomConfig = { ...selectedRoom, floorMaterial: e.target.value as any };
+                                setRooms((prev) => prev.map((r) => (r.id === selectedRoom.id ? nextRoom : r)));
+                              }}
+                            >
+                              {Object.entries(FLOOR_MATERIALS).map(([key, material]) => (
+                                <option key={key} value={key}>
+                                  {material.emoji} {material.label}
+                                </option>
+                              ))}
+                              <option value="none">⬜ None (transparent)</option>
+                            </select>
+                          </label>
+                        )}
+                      </div>
+                      )}
+
+                      {settingsTab === 'display' && (
+                      <DisplaySettingsControls
+                        overlayOptions={[
+                          { label: 'Device coverage', checked: showDeviceRadar, onChange: setShowDeviceRadar },
+                          { label: 'Clip radar to walls', checked: clipRadarToWalls, onChange: setClipRadarToWalls },
+                        ]}
+                        roomOptions={[
+                          { label: 'Walls', checked: showWalls, onChange: setShowWalls },
+                          { label: 'Furniture', checked: showFurniture, onChange: setShowFurniture },
+                          { label: 'Doors', checked: showDoors, onChange: setShowDoors },
+                          { label: 'Device icon', checked: showDeviceIcon, onChange: setShowDeviceIcon },
+                          { label: 'Targets', checked: showTargets, onChange: setShowTargets, note: !liveState?.deviceId ? 'No device' : undefined },
+                        ]}
+                        appearance={{
+                          targetMarkerScale,
+                          setTargetMarkerScale,
+                          showZoneLabels,
+                          setShowZoneLabels,
+                          zoneLabelScale,
+                          setZoneLabelScale,
+                        }}
+                      />
+                      )}
+                    </div>
+                  )}
+
+          {/* Floating Info Bar (bottom left) */}
+          <div className="absolute bottom-6 left-6 z-40 hidden rounded-xl border border-slate-700/50 bg-slate-900/90 backdrop-blur px-4 py-3 shadow-xl max-w-xl md:block">
+            <div className="flex flex-col gap-2 text-xs text-slate-200">
+              <div className="flex items-center gap-4">
+                <span className="text-slate-400 font-medium">Cursor:</span>
+                <span>
+                  X {cursorPos ? (cursorPos.x / (displayUnits === 'imperial' ? 304.8 : 1000)).toFixed(2) : '--'}{' '}
+                  {displayUnits === 'imperial' ? 'ft' : 'm'}, Y{' '}
+                  {cursorPos ? (cursorPos.y / (displayUnits === 'imperial' ? 304.8 : 1000)).toFixed(2) : '--'}{' '}
+                  {displayUnits === 'imperial' ? 'ft' : 'm'}
+                </span>
+                {cursorDelta && (
+                  <span className="text-aqua-200">
+                    Δ {cursorDelta.dx.toFixed(0)} / {cursorDelta.dy.toFixed(0)} mm (
+                    {displayUnits === 'imperial'
+                      ? (cursorDelta.len / 304.8).toFixed(2)
+                      : (cursorDelta.len / 1000).toFixed(2)}{' '}
+                    {displayUnits === 'imperial' ? 'ft' : 'm'})
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-slate-400 font-medium">Snap:</span>
+                {[0, 50, 100, 200].map((v) => (
+                  <button
+                    key={v}
+                    className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition-all active:scale-95 ${
+                      snapGridMm === v
+                        ? 'border-aqua-500 bg-aqua-500/20 text-aqua-100 shadow-lg shadow-aqua-500/20'
+                        : 'border-slate-700 bg-slate-800/50 text-slate-200 hover:border-slate-600'
+                    }`}
+                    onClick={() => setSnapGridMm(v)}
+                  >
+                    {v === 0 ? 'Off' : `${v}mm`}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-slate-400 font-medium">Wall Snap Angle:</span>
+                <button
+                  className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition-all active:scale-95 ${
+                    angleSnapEnabled
+                      ? 'border-aqua-500 bg-aqua-500/20 text-aqua-100 shadow-lg shadow-aqua-500/20'
+                      : 'border-slate-700 bg-slate-800/50 text-slate-200 hover:border-slate-600'
+                  }`}
+                  onClick={() => setAngleSnapEnabled(true)}
+                >
+                  45 deg
+                </button>
+                <button
+                  className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition-all active:scale-95 ${
+                    !angleSnapEnabled
+                      ? 'border-aqua-500 bg-aqua-500/20 text-aqua-100 shadow-lg shadow-aqua-500/20'
+                      : 'border-slate-700 bg-slate-800/50 text-slate-200 hover:border-slate-600'
+                  }`}
+                  onClick={() => setAngleSnapEnabled(false)}
+                >
+                  Free
+                </button>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-slate-400 font-medium">Units:</span>
+                <button
+                  className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition-all active:scale-95 ${
+                    displayUnits === 'metric'
+                      ? 'border-aqua-500 bg-aqua-500/20 text-aqua-100'
+                      : 'border-slate-700 bg-slate-800/50 text-slate-200 hover:border-slate-600'
+                  }`}
+                  onClick={() => setDisplayUnits('metric')}
+                >
+                  Metric
+                </button>
+                <button
+                  className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition-all active:scale-95 ${
+                    displayUnits === 'imperial'
+                      ? 'border-aqua-500 bg-aqua-500/20 text-aqua-100'
+                      : 'border-slate-700 bg-slate-800/50 text-slate-200 hover:border-slate-600'
+                  }`}
+                  onClick={() => setDisplayUnits('imperial')}
+                >
+                  Imperial
+                </button>
+              </div>
+              <div className="text-[10px] text-slate-500">
+                Tips: A to draw, Enter to finish, Esc to cancel, Del to undo
+              </div>
+            </div>
+          </div>
+                {selectedSegment !== null && segmentMidpointPercent && (
+                  <div
+                    className="pointer-events-auto absolute z-10"
+                    style={{
+                      left: `${segmentMidpointPercent.left}%`,
+                      top: `${segmentMidpointPercent.top}%`,
+                      transform: 'translate(-50%, -120%)',
+                    }}
+                  >
+                    <div className="rounded-lg border border-slate-800 bg-slate-900/90 p-2 shadow-xl">
+                      <div className="flex items-center gap-2 text-xs text-slate-200">
+                        {(() => {
+                          const pts = selectedRoom.roomShell?.points ?? [];
+                          const a = pts[selectedSegment];
+                          const b = pts[(selectedSegment + 1) % pts.length];
+                          const lenMeters = a && b ? Math.hypot(b.x - a.x, b.y - a.y) / 1000 : 0;
+                          const lengthUnit = displayUnits === 'imperial' ? 'ft' : 'm';
+                          const lengthValue = displayUnits === 'imperial' ? lenMeters * 3.28084 : lenMeters;
+                          const nudgeStepMeters = displayUnits === 'imperial' ? 0.1 * 0.3048 : 0.05; // 0.1ft or 0.05m
+                          const nudgeLabel = displayUnits === 'imperial' ? '0.10 ft' : '0.05 m';
+                          const offsetStepMeters = 0.1; // keep physical 0.1m, just display units
+                          const offsetLabel =
+                            displayUnits === 'imperial'
+                              ? `${(offsetStepMeters * 3.28084).toFixed(2)} ft`
+                              : `${offsetStepMeters.toFixed(2)} m`;
+                          return (
+                            <>
+                              <span>Length ({lengthUnit})</span>
+                              <input
+                                type="number"
+                                className="w-20 rounded-md border border-slate-700 bg-slate-800/60 px-2 py-1 text-xs text-white focus:border-aqua-500 focus:ring-1 focus:ring-aqua-500/50 focus:outline-none"
+                                value={lengthValue.toFixed(2)}
+                                onChange={(e) => {
+                                  const raw = Number(e.target.value);
+                                  const meters = displayUnits === 'imperial' ? raw * 0.3048 : raw;
+                                  adjustSegmentLength(Math.max(0.1, meters));
+                                }}
+                              />
+                              <button
+                                className="rounded-md border border-slate-700 px-2 py-1 text-[11px] font-semibold text-slate-100 hover:border-aqua-400"
+                                onClick={() => nudgeSegmentLength(-nudgeStepMeters)}
+                              >
+                                -{nudgeLabel}
+                              </button>
+                              <button
+                                className="rounded-md border border-slate-700 px-2 py-1 text-[11px] font-semibold text-slate-100 hover:border-aqua-400"
+                                onClick={() => nudgeSegmentLength(nudgeStepMeters)}
+                              >
+                                +{nudgeLabel}
+                              </button>
+                              <button
+                                className="rounded-md border border-slate-700 px-2 py-1 text-xs font-semibold text-slate-100 hover:border-amber-400"
+                                onClick={() => {
+                                  setSelectedSegment(null);
+                                  setHoveredSegment(null);
+                                }}
+                              >
+                                Close
+                              </button>
+                              <button
+                                className="rounded-md border border-rose-500/70 px-2 py-1 text-xs font-semibold text-rose-100 hover:bg-rose-500/10"
+                                onClick={() => {
+                                  const ptsDelete = selectedRoom.roomShell?.points ?? [];
+                                  if (ptsDelete.length <= 2) return;
+                                  const removeIdx = (selectedSegment + 1) % ptsDelete.length;
+                                  const nextDelete = ptsDelete.filter((_, idx) => idx !== removeIdx);
+                                  handlePointsChange(nextDelete);
+                                  setSelectedSegment(null);
+                                  setHoveredSegment(null);
+                                }}
+                              >
+                                Delete
+                              </button>
+                              <button
+                                className="rounded-md border border-emerald-500/70 px-2 py-1 text-xs font-semibold text-emerald-100 hover:bg-emerald-500/10"
+                                onClick={() => {
+                                  insertPointOnSegment(selectedSegment);
+                                }}
+                              >
+                                + Insert point
+                              </button>
+                              <div className="flex items-center gap-2 pt-1 text-xs text-slate-200">
+                                <span>Offset</span>
+                                <button
+                                  className="rounded-md border border-slate-700 px-2 py-1 text-[11px] font-semibold text-slate-100 hover:border-amber-400"
+                                  onClick={() => offsetSegmentNormal(-offsetStepMeters)}
+                                >
+                                  -{offsetLabel}
+                                </button>
+                                <button
+                                  className="rounded-md border border-slate-700 px-2 py-1 text-[11px] font-semibold text-slate-100 hover:border-amber-400"
+                                  onClick={() => offsetSegmentNormal(offsetStepMeters)}
+                                >
+                                  +{offsetLabel}
+                                </button>
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+          {/* Furniture Editor Panel */}
+          {selectedFurniture && (
+            <div className="hidden md:block">
+              <FurnitureEditor
+                furniture={selectedFurniture}
+                onChange={handleFurnitureChange}
+                onDelete={handleFurnitureDelete}
+                onClose={() => setSelectedFurnitureId(null)}
+              />
+            </div>
+          )}
+
+          {/* Door Editor Panel */}
+          {selectedDoor && (
+            <DoorEditor
+              door={selectedDoor}
+              onChange={handleDoorChange}
+              onDelete={handleDoorDelete}
+              onClose={() => setSelectedDoorId(null)}
+              maxSegmentIndex={(selectedRoom?.roomShell?.points?.length ?? 1) - 1}
+              validation={doorValidation}
+            />
+          )}
+
+          <div className="md:hidden">
+            <CanvasBottomToolbar>
+              <CanvasToolbarButton
+                label="Tools"
+                active={activeMobileSheet === 'tools'}
+                onClick={toggleMobileToolsSheet}
+              />
+              <CanvasToolbarButton
+                label="Settings"
+                active={showSettings}
+                onClick={toggleMobileSettingsSheet}
+              />
+              <CanvasToolbarButton
+                label="Zoom"
+                active={activeMobileSheet === 'zoom'}
+                onClick={toggleMobileZoomSheet}
+              />
+              <CanvasToolbarButton
+                label="Furniture"
+                active={showFurnitureLibrary}
+                onClick={() => {
+                  setActiveMobileSheet(null);
+                  setShowSettings(false);
+                  setShowFurnitureLibrary((current) => !current);
+                  setSelectedFurnitureId(null);
+                }}
+              />
+            </CanvasBottomToolbar>
+          </div>
+        </div>
+      )}
+
+      <CanvasMobileSheet
+        open={activeMobileSheet === 'navigation'}
+        title="Menu"
+        onClose={() => setActiveMobileSheet(null)}
+      >
+        <div className="space-y-2">
+          {onNavigate && (
+            <>
+              <button
+                type="button"
+                onClick={async () => {
+                  await navigateWithSave('liveDashboard');
+                  setActiveMobileSheet(null);
+                }}
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-left text-sm font-semibold text-slate-100"
+              >
+                Live Dashboard
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await navigateWithSave('wizard');
+                  setActiveMobileSheet(null);
+                }}
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-left text-sm font-semibold text-slate-100"
+              >
+                Add Device
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await navigateWithSave('zoneEditor');
+                  setActiveMobileSheet(null);
+                }}
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-left text-sm font-semibold text-slate-100"
+              >
+                Zone Editor
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await navigateWithSave('settings');
+                  setActiveMobileSheet(null);
+                }}
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-left text-sm font-semibold text-slate-100"
+              >
+                Settings
+              </button>
+            </>
+          )}
+        </div>
+      </CanvasMobileSheet>
+
+      <CanvasMobileSheet
+        open={activeMobileSheet === 'tools'}
+        title="Tools"
+        description={selectedRoom?.name}
+        onClose={() => setActiveMobileSheet(null)}
+      >
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <button
+            type="button"
+            className={`rounded-lg border px-3 py-3 font-semibold ${
+              isDrawingWall
+                ? 'border-aqua-500 bg-aqua-500/20 text-aqua-100'
+                : 'border-slate-700 bg-slate-800 text-slate-100'
+            }`}
+            onClick={() => setIsDrawingWall((prev) => !prev)}
+          >
+            {isDrawingWall ? 'Stop Drawing' : 'Add Wall'}
+          </button>
+          <button
+            type="button"
+            className="rounded-lg border border-emerald-600/60 bg-emerald-600/20 px-3 py-3 font-semibold text-emerald-100 disabled:opacity-40"
+            onClick={handleCloseLoop}
+            disabled={!selectedRoom || (selectedRoom.roomShell?.points?.length ?? 0) < 2}
+          >
+            Finish
+          </button>
+          <button
+            type="button"
+            className="rounded-lg border border-amber-600/60 bg-amber-600/20 px-3 py-3 font-semibold text-amber-100 disabled:opacity-40"
+            onClick={removeLastPoint}
+            disabled={!selectedRoom || !(selectedRoom.roomShell?.points?.length)}
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            className="rounded-lg border border-rose-600/60 bg-rose-600/20 px-3 py-3 font-semibold text-rose-100 disabled:opacity-40"
+            onClick={handleClear}
+            disabled={!selectedRoom}
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            className={`rounded-lg border px-3 py-3 font-semibold ${
+              isDoorPlacementMode
+                ? 'border-aqua-500 bg-aqua-500/20 text-aqua-100'
+                : 'border-slate-700 bg-slate-800 text-slate-100'
+            } disabled:opacity-40`}
+            onClick={handleAddDoor}
+            disabled={!selectedRoom || !selectedRoom.roomShell?.points || selectedRoom.roomShell.points.length < 3}
+          >
+            {isDoorPlacementMode ? 'Cancel Door' : 'Add Door'}
+          </button>
+          <button
+            type="button"
+            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-3 font-semibold text-slate-100"
+            onClick={() => {
+              setActiveMobileSheet(null);
+              setShowFurnitureLibrary(true);
+              setSelectedFurnitureId(null);
+            }}
+            disabled={!selectedRoom}
+          >
+            Furniture
+          </button>
+        </div>
+        {selectedFurniture && (
+          <div className="mt-4 space-y-3 rounded-lg border border-purple-600/40 bg-purple-600/10 p-3 text-sm text-slate-200">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="font-semibold text-white">Selected furniture</div>
+                <div className="text-xs text-slate-400">{selectedFurniture.typeId}</div>
+              </div>
+              <button
+                type="button"
+                className="rounded-md border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-100"
+                onClick={() => setSelectedFurnitureId(null)}
+              >
+                Deselect
+              </button>
+            </div>
+            <label className="block">
+              <span className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-400">
+                <span>Rotation</span>
+                <span className="font-mono text-aqua-300">{Math.round(selectedFurniture.rotationDeg ?? 0)} deg</span>
+              </span>
+              <input
+                type="range"
+                min="0"
+                max="359"
+                value={selectedFurniture.rotationDeg ?? 0}
+                onChange={(e) => handleFurnitureChange({ ...selectedFurniture, rotationDeg: Number(e.target.value) })}
+                className="w-full"
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block text-xs font-semibold text-slate-400">
+                Width (m)
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  value={(selectedFurniture.width / 1000).toFixed(2)}
+                  onChange={(e) => {
+                    const width = Number(e.target.value) * 1000;
+                    if (Number.isFinite(width) && width > 0) {
+                      handleFurnitureChange({ ...selectedFurniture, width });
+                    }
+                  }}
+                  className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-2 text-sm text-slate-100"
+                />
+              </label>
+              <label className="block text-xs font-semibold text-slate-400">
+                Depth (m)
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  value={(selectedFurniture.depth / 1000).toFixed(2)}
+                  onChange={(e) => {
+                    const depth = Number(e.target.value) * 1000;
+                    if (Number.isFinite(depth) && depth > 0) {
+                      handleFurnitureChange({ ...selectedFurniture, depth });
+                    }
+                  }}
+                  className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-2 text-sm text-slate-100"
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              className="w-full rounded-lg border border-rose-600/60 bg-rose-600/20 px-3 py-3 font-semibold text-rose-100"
+              onClick={handleFurnitureDelete}
+            >
+              Delete Furniture
+            </button>
+          </div>
+        )}
+      </CanvasMobileSheet>
+
+      <CanvasMobileSheet
+        open={activeMobileSheet === 'zoom'}
+        title="Zoom & Snap"
+        onClose={() => setActiveMobileSheet(null)}
+      >
+        <div className="space-y-4 text-sm text-slate-200">
+          <div className="grid grid-cols-2 gap-2">
+            <button className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 font-semibold" onClick={() => setZoom((z) => Math.min(5, z + 0.1))}>Zoom In</button>
+            <button className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 font-semibold" onClick={() => setZoom((z) => Math.max(0.1, z - 0.1))}>Zoom Out</button>
+            <button className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 font-semibold" onClick={() => setZoom(1)}>Reset</button>
+            <button className="rounded-lg border border-aqua-600/60 bg-aqua-600/20 px-4 py-3 font-semibold text-aqua-100" onClick={() => handleAutoZoom(selectedRoom)}>Auto Fit</button>
+          </div>
+          <div>
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Snap Grid</div>
+            <div className="grid grid-cols-4 gap-2">
+              {[0, 50, 100, 200].map((value) => (
+                <button
+                  key={value}
+                  onClick={() => setSnapGridMm(value)}
+                  className={`rounded-lg border px-2 py-2 text-xs font-semibold ${
+                    snapGridMm === value
+                      ? 'border-aqua-500 bg-aqua-500/20 text-aqua-100'
+                      : 'border-slate-700 bg-slate-800 text-slate-200'
+                  }`}
+                >
+                  {value === 0 ? 'Off' : `${value}mm`}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+                angleSnapEnabled ? 'border-aqua-500 bg-aqua-500/20 text-aqua-100' : 'border-slate-700 bg-slate-800 text-slate-200'
+              }`}
+              onClick={() => setAngleSnapEnabled(true)}
+            >
+              45 deg
+            </button>
+            <button
+              className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+                !angleSnapEnabled ? 'border-aqua-500 bg-aqua-500/20 text-aqua-100' : 'border-slate-700 bg-slate-800 text-slate-200'
+              }`}
+              onClick={() => setAngleSnapEnabled(false)}
+            >
+              Free angle
+            </button>
+          </div>
+          <div className="rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2 text-xs text-slate-400">
+            Cursor: X {cursorPos ? (cursorPos.x / (displayUnits === 'imperial' ? 304.8 : 1000)).toFixed(2) : '--'} {displayUnits === 'imperial' ? 'ft' : 'm'}, Y {cursorPos ? (cursorPos.y / (displayUnits === 'imperial' ? 304.8 : 1000)).toFixed(2) : '--'} {displayUnits === 'imperial' ? 'ft' : 'm'}
+          </div>
+        </div>
+      </CanvasMobileSheet>
+
+      {/* Furniture Library Modal - outside canvas wrapper to prevent scroll interference */}
+      {showFurnitureLibrary && (
+        <FurnitureLibrary
+          onSelect={handleAddFurniture}
+          onClose={() => setShowFurnitureLibrary(false)}
+        />
+      )}
+    </div>
+  );
+};
+
+
+

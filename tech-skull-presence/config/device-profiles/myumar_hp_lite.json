@@ -1,0 +1,195 @@
+{
+  "id": "myumar_hp_lite",
+  "schemaVersion": "1.0",
+  "label": "HP-Lite (LD2450 2D)",
+  "model": "HP_series",
+  "manufacturer": "MYumar",
+  "iconUrl": "./icon.png",
+  "capabilities": {
+    "tracking": true,
+    "zones": true,
+    "exclusionZones": false,
+    "entryZones": false,
+    "polygonZones": false,
+    "distanceOnlyTracking": false,
+    "environmental": false,
+    "sensors": {
+      "mmwavePresence": true,
+      "pir": false,
+      "illuminance": false,
+      "temperature": false,
+      "humidity": false
+    }
+  },
+  "limits": {
+    "maxZones": 3,
+    "maxExclusionZones": 0,
+    "maxEntryZones": 0,
+    "maxTargets": 3,
+    "maxRangeMeters": 6,
+    "fieldOfViewDegrees": 120
+  },
+  "services": {},
+  "entities": {
+    "presence": {
+      "template": "binary_sensor.${name}_presence",
+      "category": "sensor",
+      "subcategory": "presence",
+      "label": "Presence",
+      "required": true
+    },
+    "movingTarget": {
+      "template": "binary_sensor.${name}_moving_target",
+      "category": "sensor",
+      "subcategory": "presence",
+      "label": "Moving Target",
+      "required": false
+    },
+    "stillTarget": {
+      "template": "binary_sensor.${name}_still_target",
+      "category": "sensor",
+      "subcategory": "presence",
+      "label": "Still Target",
+      "required": false
+    },
+    "targetCount": {
+      "template": "sensor.${name}_presence_target_count",
+      "category": "tracking",
+      "property": "targetCount",
+      "required": false
+    },
+    "stillTargetCount": {
+      "template": "sensor.${name}_still_target_count",
+      "category": "tracking",
+      "property": "stillTargetCount",
+      "required": false
+    },
+    "movingTargetCount": {
+      "template": "sensor.${name}_moving_target_count",
+      "category": "tracking",
+      "property": "movingTargetCount",
+      "required": false
+    },
+
+    "target1X":          { "template": "sensor.${name}_target_1_x",          "category": "tracking", "targetIndex": 1, "property": "x", "required": false },
+    "target1Y":          { "template": "sensor.${name}_target_1_y",          "category": "tracking", "targetIndex": 1, "property": "y", "required": false },
+    "target1Distance":   { "template": "sensor.${name}_target_1_distance",   "category": "tracking", "targetIndex": 1, "property": "distance", "required": false },
+    "target1Speed":      { "template": "sensor.${name}_target_1_speed",      "category": "tracking", "targetIndex": 1, "property": "speed", "required": false },
+    "target1Angle":      { "template": "sensor.${name}_target_1_angle",      "category": "tracking", "targetIndex": 1, "property": "angle", "required": false },
+    "target1Resolution": { "template": "sensor.${name}_target_1_resolution", "category": "tracking", "targetIndex": 1, "property": "resolution", "required": false },
+
+    "target2X":          { "template": "sensor.${name}_target_2_x",          "category": "tracking", "targetIndex": 2, "property": "x", "required": false },
+    "target2Y":          { "template": "sensor.${name}_target_2_y",          "category": "tracking", "targetIndex": 2, "property": "y", "required": false },
+    "target2Distance":   { "template": "sensor.${name}_target_2_distance",   "category": "tracking", "targetIndex": 2, "property": "distance", "required": false },
+    "target2Speed":      { "template": "sensor.${name}_target_2_speed",      "category": "tracking", "targetIndex": 2, "property": "speed", "required": false },
+    "target2Angle":      { "template": "sensor.${name}_target_2_angle",      "category": "tracking", "targetIndex": 2, "property": "angle", "required": false },
+    "target2Resolution": { "template": "sensor.${name}_target_2_resolution", "category": "tracking", "targetIndex": 2, "property": "resolution", "required": false },
+
+    "target3X":          { "template": "sensor.${name}_target_3_x",          "category": "tracking", "targetIndex": 3, "property": "x", "required": false },
+    "target3Y":          { "template": "sensor.${name}_target_3_y",          "category": "tracking", "targetIndex": 3, "property": "y", "required": false },
+    "target3Distance":   { "template": "sensor.${name}_target_3_distance",   "category": "tracking", "targetIndex": 3, "property": "distance", "required": false },
+    "target3Speed":      { "template": "sensor.${name}_target_3_speed",      "category": "tracking", "targetIndex": 3, "property": "speed", "required": false },
+    "target3Angle":      { "template": "sensor.${name}_target_3_angle",      "category": "tracking", "targetIndex": 3, "property": "angle", "required": false },
+    "target3Resolution": { "template": "sensor.${name}_target_3_resolution", "category": "tracking", "targetIndex": 3, "property": "resolution", "required": false },
+
+    "zone1BeginX": { "template": "number.${name}_zone_1_x1", "category": "zone", "zoneType": "regular", "zoneIndex": 1, "coord": "beginX", "required": false },
+    "zone1BeginY": { "template": "number.${name}_zone_1_y1", "category": "zone", "zoneType": "regular", "zoneIndex": 1, "coord": "beginY", "required": false },
+    "zone1EndX":   { "template": "number.${name}_zone_1_x2", "category": "zone", "zoneType": "regular", "zoneIndex": 1, "coord": "endX",   "required": false },
+    "zone1EndY":   { "template": "number.${name}_zone_1_y2", "category": "zone", "zoneType": "regular", "zoneIndex": 1, "coord": "endY",   "required": false },
+
+    "zone2BeginX": { "template": "number.${name}_zone_2_x1", "category": "zone", "zoneType": "regular", "zoneIndex": 2, "coord": "beginX", "required": false },
+    "zone2BeginY": { "template": "number.${name}_zone_2_y1", "category": "zone", "zoneType": "regular", "zoneIndex": 2, "coord": "beginY", "required": false },
+    "zone2EndX":   { "template": "number.${name}_zone_2_x2", "category": "zone", "zoneType": "regular", "zoneIndex": 2, "coord": "endX",   "required": false },
+    "zone2EndY":   { "template": "number.${name}_zone_2_y2", "category": "zone", "zoneType": "regular", "zoneIndex": 2, "coord": "endY",   "required": false },
+
+    "zone3BeginX": { "template": "number.${name}_zone_3_x1", "category": "zone", "zoneType": "regular", "zoneIndex": 3, "coord": "beginX", "required": false },
+    "zone3BeginY": { "template": "number.${name}_zone_3_y1", "category": "zone", "zoneType": "regular", "zoneIndex": 3, "coord": "beginY", "required": false },
+    "zone3EndX":   { "template": "number.${name}_zone_3_x2", "category": "zone", "zoneType": "regular", "zoneIndex": 3, "coord": "endX",   "required": false },
+    "zone3EndY":   { "template": "number.${name}_zone_3_y2", "category": "zone", "zoneType": "regular", "zoneIndex": 3, "coord": "endY",   "required": false },
+
+    "zone1AllTargetCount":    { "template": "sensor.${name}_zone_1_all_target_count",    "category": "sensor", "subcategory": "zoneTargetCount", "label": "Zone 1 Targets",       "required": false },
+    "zone1StillTargetCount":  { "template": "sensor.${name}_zone_1_still_target_count",  "category": "sensor", "subcategory": "zoneTargetCount", "label": "Zone 1 Still Targets", "required": false },
+    "zone1MovingTargetCount": { "template": "sensor.${name}_zone_1_moving_target_count", "category": "sensor", "subcategory": "zoneTargetCount", "label": "Zone 1 Moving Targets","required": false },
+    "zone2AllTargetCount":    { "template": "sensor.${name}_zone_2_all_target_count",    "category": "sensor", "subcategory": "zoneTargetCount", "label": "Zone 2 Targets",       "required": false },
+    "zone2StillTargetCount":  { "template": "sensor.${name}_zone_2_still_target_count",  "category": "sensor", "subcategory": "zoneTargetCount", "label": "Zone 2 Still Targets", "required": false },
+    "zone2MovingTargetCount": { "template": "sensor.${name}_zone_2_moving_target_count", "category": "sensor", "subcategory": "zoneTargetCount", "label": "Zone 2 Moving Targets","required": false },
+    "zone3AllTargetCount":    { "template": "sensor.${name}_zone_3_all_target_count",    "category": "sensor", "subcategory": "zoneTargetCount", "label": "Zone 3 Targets",       "required": false },
+    "zone3StillTargetCount":  { "template": "sensor.${name}_zone_3_still_target_count",  "category": "sensor", "subcategory": "zoneTargetCount", "label": "Zone 3 Still Targets", "required": false },
+    "zone3MovingTargetCount": { "template": "sensor.${name}_zone_3_moving_target_count", "category": "sensor", "subcategory": "zoneTargetCount", "label": "Zone 3 Moving Targets","required": false },
+
+    "timeout": {
+      "template": "number.${name}_timeout",
+      "category": "setting",
+      "group": "Radar",
+      "label": "Detection Timeout",
+      "controlType": "number",
+      "min": 0, "max": 600, "step": 1, "unit": "s",
+      "required": false
+    },
+    "radarZoneMode": {
+      "template": "select.${name}_radar_modo_zonas",
+      "category": "setting",
+      "group": "Radar",
+      "label": "Zone Mode",
+      "controlType": "select",
+      "description": "LD2450 zone behaviour: Disabled / Detection / Filter",
+      "required": false
+    },
+    "radarBaudRate": {
+      "template": "select.${name}_radar_baud_rate",
+      "category": "setting",
+      "group": "Advanced",
+      "label": "Radar Baud Rate",
+      "controlType": "select",
+      "required": false
+    },
+    "radarBluetooth": {
+      "template": "switch.${name}_radar_bluetooth",
+      "category": "setting",
+      "group": "Advanced",
+      "label": "Radar Bluetooth",
+      "controlType": "switch",
+      "required": false
+    },
+    "multiTargetTracking": {
+      "template": "switch.${name}_radar_multi_target_tracking",
+      "category": "setting",
+      "group": "Tracking",
+      "label": "Multi-Target Tracking",
+      "controlType": "switch",
+      "required": false
+    }
+  },
+  "entityMap": {
+    "presenceEntity": "binary_sensor.${name}_presence",
+    "targetCountEntity": "sensor.${name}_presence_target_count",
+    "trackingTargetCountEntity": "sensor.${name}_presence_target_count",
+    "zoneConfigEntities": {
+      "zone1": {
+        "beginX": "number.${name}_zone_1_x1",
+        "beginY": "number.${name}_zone_1_y1",
+        "endX":   "number.${name}_zone_1_x2",
+        "endY":   "number.${name}_zone_1_y2"
+      },
+      "zone2": {
+        "beginX": "number.${name}_zone_2_x1",
+        "beginY": "number.${name}_zone_2_y1",
+        "endX":   "number.${name}_zone_2_x2",
+        "endY":   "number.${name}_zone_2_y2"
+      },
+      "zone3": {
+        "beginX": "number.${name}_zone_3_x1",
+        "beginY": "number.${name}_zone_3_y1",
+        "endX":   "number.${name}_zone_3_x2",
+        "endY":   "number.${name}_zone_3_y2"
+      }
+    },
+    "settingsEntities": {
+      "timeout":             "number.${name}_timeout",
+      "radarZoneMode":       "select.${name}_radar_modo_zonas",
+      "radarBaudRate":       "select.${name}_radar_baud_rate",
+      "radarBluetooth":      "switch.${name}_radar_bluetooth",
+      "multiTargetTracking": "switch.${name}_radar_multi_target_tracking"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+# Force LF line endings for all text files.
+# Critical: the s6 `run` script and Dockerfile MUST be LF or they break
+# inside the Linux Docker container (CRLF corrupts the shebang line).
+* text=auto eol=lf
+
+# Explicitly mark binaries so git never touches their bytes.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
