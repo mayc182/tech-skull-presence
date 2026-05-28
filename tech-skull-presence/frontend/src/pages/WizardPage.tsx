@@ -20,6 +20,7 @@ import { useWallDrawing } from '../hooks/useWallDrawing';
 import { pushZonesToDevice, fetchZonesFromDevice, fetchPolygonModeStatus, setPolygonMode, fetchPolygonZonesFromDevice, pushPolygonZonesToDevice, PolygonModeStatus } from '../api/zones';
 import { fetchZoneAvailability, ingressAware } from '../api/client';
 import { suggestProfile } from '../api/entityDiscovery';
+import { HPZoneModeControl } from '../components/HPZoneModeControl';
 import { useDeviceMappings } from '../contexts/DeviceMappingsContext';
 import { getInstallationAngleSuggestion } from '../utils/rotationSuggestion';
 import { useDisplaySettings } from '../hooks/useDisplaySettings';
@@ -3365,6 +3366,18 @@ export const WizardPage: React.FC<WizardPageProps> = ({
                     {!liveState?.deviceId && <span className="text-slate-500">(No device)</span>}
                   </span>
                 </label>
+                <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-white transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={showDeviceRadar}
+                    onChange={(e) => setShowDeviceRadar(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded border-slate-600 bg-slate-800 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0"
+                  />
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    Device coverage (FoV)
+                  </span>
+                </label>
               </div>
               <span className="ml-auto text-slate-500">Drag device • Right-drag to pan • Wheel to zoom</span>
             </div>
@@ -3412,6 +3425,14 @@ export const WizardPage: React.FC<WizardPageProps> = ({
               <span className="ml-auto text-slate-500 text-xs">(radar stops at walls when enabled)</span>
             </label>
           </div>
+
+          {/* LD2450 zone mode — sets whether all zones DETECT or are IGNORED (Filter) */}
+          {selectedRoom?.deviceId && getEntityId(selectedRoom.deviceId, 'radarZoneMode') && (
+            <HPZoneModeControl
+              deviceId={selectedRoom.deviceId}
+              zoneModeEntityId={getEntityId(selectedRoom.deviceId, 'radarZoneMode')!}
+            />
+          )}
 
           {/* Position display */}
           {selectedRoom?.devicePlacement && (

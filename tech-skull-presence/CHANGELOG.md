@@ -2,6 +2,16 @@
 
 All notable changes to this add-on. Versions follow the `version:` field in `config.yaml`.
 
+## 0.2.7 — Coverage toggle + Zone Mode in the wizard
+
+- Added a **"Device coverage (FoV)"** checkbox to the wizard's zone/placement step
+  so the green coverage cone can be turned on directly there. (The default is on,
+  but a previously-saved display setting could keep it off — now you can flip it.)
+- Added the **Zone Mode** control (Detection / Filter / Disabled) to the wizard
+  zone step for LD2450 devices, so you can set whether zones detect or are ignored
+  without leaving the wizard. Previously it lived only in the standalone Zone Editor,
+  so the "Behaviour set by Zone Mode" hint pointed to a control you couldn't reach mid-wizard.
+
 ## 0.2.6 — Clearer zone types
 
 - The per-zone **type dropdown** (regular/exclusion/entry) is now hidden when the
