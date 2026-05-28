@@ -50,7 +50,9 @@ uart:
   - id: uart_ld2450
     tx_pin: 21
     rx_pin: 20
-    baud_rate: 9600
+    # 256000 = baud por defecto de fabrica del LD2450. Este board nunca fue
+    # reconfigurado, asi que el UART debe ir a 256000 para comunicar con el radar.
+    baud_rate: 256000
     rx_buffer_size: 2048  # Esto elimina el error "Max command length exceeded"
     parity: NONE
     stop_bits: 1
