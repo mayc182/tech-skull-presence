@@ -22,6 +22,10 @@ ota:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+  # ESP32-C3: este board necesita TX reducida + sin power save para
+  # conectar de forma fiable (si no: "No networks found" / "Probe Request Unsuccessful").
+  output_power: 8.5dB
+  power_save_mode: none
   ap:
     ssid: "Hp-02-Lite-2 Fallback Hotspot"
     password: !secret wifi_password_ap
