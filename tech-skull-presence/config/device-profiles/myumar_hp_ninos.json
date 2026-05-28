@@ -1,6 +1,6 @@
 {
   "id": "myumar_hp_ninos",
-  "schemaVersion": "1.0",
+  "schemaVersion": "1.1",
   "label": "HP-Ninos (LD2410 + SCD40 + LED + Buzzer)",
   "model": "HP_series",
   "manufacturer": "MYumar",
@@ -185,7 +185,14 @@
       "controlType": "number",
       "min": 0, "max": 600, "step": 1, "unit": "s",
       "required": false
-    }
+    },
+    "engineeringMode":   { "template": "switch.${name}_engineering_mode",       "category": "setting", "group": "Advanced", "label": "Engineering Mode",        "controlType": "switch", "required": false },
+    "distanceResolution":{ "template": "select.${name}_distance_resolution",     "category": "setting", "group": "Advanced", "label": "Distance Resolution",     "controlType": "select", "required": false },
+    "baudRate":          { "template": "select.${name}_baud_rate",               "category": "setting", "group": "Advanced", "label": "Radar Baud Rate",         "controlType": "select", "required": false },
+    "controlBluetooth":  { "template": "switch.${name}_control_bluetooth",       "category": "setting", "group": "Advanced", "label": "Bluetooth",               "controlType": "switch", "required": false },
+    "lightThreshold":    { "template": "number.${name}_light_threshold",         "category": "setting", "group": "Radar",    "label": "Light Threshold",         "controlType": "number", "required": false },
+    "maxMoveDistanceGate":  { "template": "number.${name}_max_move_distance_gate",  "category": "setting", "group": "Radar", "label": "Max Move Distance Gate",  "controlType": "number", "required": false },
+    "maxStillDistanceGate": { "template": "number.${name}_max_still_distance_gate", "category": "setting", "group": "Radar", "label": "Max Still Distance Gate", "controlType": "number", "required": false }
   },
   "entityMap": {
     "presenceEntity": "binary_sensor.${name}_room_occupancy",
@@ -201,7 +208,14 @@
       "zone1EndDistance": "number.${name}_zone_1_end_distance",
       "zone2EndDistance": "number.${name}_zone_2_end_distance",
       "zone3EndDistance": "number.${name}_zone_3_end_distance",
-      "timeout": "number.${name}_timeout"
+      "timeout": "number.${name}_timeout",
+      "engineeringMode": "switch.${name}_engineering_mode",
+      "distanceResolution": "select.${name}_distance_resolution",
+      "baudRate": "select.${name}_baud_rate",
+      "controlBluetooth": "switch.${name}_control_bluetooth",
+      "lightThreshold": "number.${name}_light_threshold",
+      "maxMoveDistanceGate": "number.${name}_max_move_distance_gate",
+      "maxStillDistanceGate": "number.${name}_max_still_distance_gate"
     }
   }
 }

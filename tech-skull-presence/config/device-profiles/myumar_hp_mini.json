@@ -1,6 +1,6 @@
 {
   "id": "myumar_hp_mini",
-  "schemaVersion": "1.0",
+  "schemaVersion": "1.1",
   "label": "HP-mini (LD2410)",
   "model": "HP_series",
   "manufacturer": "MYumar",
@@ -157,7 +157,9 @@
       "label": "Bluetooth",
       "controlType": "switch",
       "required": false
-    }
+    },
+    "distanceResolution": { "template": "select.${name}_distance_resolution", "category": "setting", "group": "Advanced", "label": "Distance Resolution", "controlType": "select", "required": false },
+    "baudRate":           { "template": "select.${name}_baud_rate",           "category": "setting", "group": "Advanced", "label": "Radar Baud Rate",     "controlType": "select", "required": false }
   },
   "entityMap": {
     "presenceEntity": "binary_sensor.${name}_presence",

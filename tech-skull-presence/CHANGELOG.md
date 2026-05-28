@@ -2,6 +2,23 @@
 
 All notable changes to this add-on. Versions follow the `version:` field in `config.yaml`.
 
+## 0.4.2 — Full radar settings for LD2410 profiles
+
+- The 4 LD2410 profiles now expose the complete radar settings so they appear in
+  the **Device Settings** modal (gear in the Live view): **Engineering Mode**,
+  **Distance Resolution** (0.2 m / 0.75 m), **Radar Baud Rate**, **Bluetooth**,
+  **Light Threshold**, **Max Move/Still Distance Gate** — plus the existing
+  timeout / distance bands / (CO2 offsets, LED, No-Disturb where applicable).
+- Profile schema bumped to 1.1 → **re-sync entities** on each LD2410 device to pick
+  up the new settings.
+
+> Where to find it: open the **Live** view, select the room, open **Device Settings**
+> (gear icon). All sensor settings live there.
+
+> Note on the FoV cone: it extends to the profile's max range (6 m) but is **clipped
+> to your drawn walls** when "Clip radar to walls" is on — if the cone looks short,
+> either the room outline is small or turn that toggle off.
+
 ## 0.4.1 — Mount the environmental/controls dashboard (fix)
 
 - **Fix**: the CO2 / temperature / humidity / illuminance panel, the device

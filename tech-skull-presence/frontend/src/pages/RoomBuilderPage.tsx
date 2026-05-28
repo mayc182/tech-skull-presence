@@ -1275,8 +1275,8 @@ export const RoomBuilderPage: React.FC<RoomBuilderPageProps> = ({
             setZoom((z) => Math.min(5, Math.max(0.1, z + delta)));
           }}
         >
-                {/* Floor-plan tracing template controls */}
-                <div className="absolute top-3 left-3 z-40 w-56 space-y-2 rounded-xl border border-slate-700/50 bg-slate-900/90 p-3 text-xs text-slate-200 shadow-lg backdrop-blur">
+                {/* Floor-plan tracing template controls (right side to avoid the wall menu) */}
+                <div className="absolute top-3 right-3 z-40 w-56 space-y-2 rounded-xl border border-slate-700/50 bg-slate-900/90 p-3 text-xs text-slate-200 shadow-lg backdrop-blur">
                   <div className="font-semibold text-white">Floor plan</div>
                   <input
                     ref={floorPlanInputRef}
