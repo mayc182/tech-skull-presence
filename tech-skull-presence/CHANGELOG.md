@@ -2,6 +2,15 @@
 
 All notable changes to this add-on. Versions follow the `version:` field in `config.yaml`.
 
+## 0.2.3 — Hide firmware service mapping for DIY profiles
+
+- The wizard's **Firmware Service Mapping** section (Build Flags / Update Manifest)
+  is now hidden for profiles that don't define those services. HP firmwares don't
+  expose `get_build_flags` / `set_update_manifest`, so the "could not auto-discover"
+  notices were noise — that step is purely about the upstream OTA-update flow, which
+  doesn't apply to DIY devices flashed via ESPHome.
+- The section still appears for any profile that defines firmware services.
+
 ## 0.2.2 — Mirror X (flipped-mount support)
 
 - **New: "Mirror X" toggle** in the Zone Editor for tracking radars (LD2450)

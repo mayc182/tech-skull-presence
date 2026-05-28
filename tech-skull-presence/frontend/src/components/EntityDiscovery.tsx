@@ -13,6 +13,7 @@ import { saveDeviceMapping, DeviceMapping } from '../api/deviceMappings';
 import { useDeviceMappings } from '../contexts/DeviceMappingsContext';
 import { ServiceMappingSelector } from './ServiceMappingSelector';
 import { validateMappings } from '../api/entityDiscovery';
+import { fetchProfiles } from '../api/client';
 
 interface EntityDiscoveryProps {
   deviceId: string;
@@ -35,6 +36,10 @@ export const EntityDiscovery: React.FC<EntityDiscoveryProps> = ({
 }) => {
   const { getMapping, refreshMapping } = useDeviceMappings();
   const [existingMapping, setExistingMapping] = useState<DeviceMapping | null>(null);
+  // Whether this device profile exposes firmware services (get_build_flags /
+  // set_update_manifest). DIY HP profiles don't, so the Firmware Service Mapping
+  // section is hidden for them to avoid confusing "could not auto-discover" notices.
+  const [hasFirmwareServices, setHasFirmwareServices] = useState(false);
   const [status, setStatus] = useState<DiscoveryStatus>('loading');
   const [saving, setSaving] = useState(false);
   const [discoveryResult, setDiscoveryResult] = useState<DiscoveryResult | null>(null);
@@ -47,6 +52,24 @@ export const EntityDiscovery: React.FC<EntityDiscoveryProps> = ({
   const entityById = useMemo(() => {
     return new Map(allEntities.map((entity) => [entity.entity_id, entity]));
   }, [allEntities]);
+
+  // Determine whether the selected profile defines firmware services.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { profiles } = await fetchProfiles();
+        const profile = profiles.find((p) => p.id === profileId) as { services?: Record<string, unknown> } | undefined;
+        const has = !!profile?.services && Object.keys(profile.services).length > 0;
+        if (!cancelled) setHasFirmwareServices(has);
+      } catch {
+        if (!cancelled) setHasFirmwareServices(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId]);
 
   // Load existing device mapping to preserve user overrides during re-sync
   useEffect(() => {
@@ -731,7 +754,8 @@ export const EntityDiscovery: React.FC<EntityDiscoveryProps> = ({
               </button>
             </div>
 
-            {/* Service Mapping Selector - for firmware service mapping */}
+            {/* Service Mapping Selector - only for profiles with firmware services */}
+            {hasFirmwareServices && (
             <div className="mt-6 pt-4 border-t border-slate-700">
               {(() => {
                 const displayMapping: DeviceMapping =
@@ -768,6 +792,7 @@ export const EntityDiscovery: React.FC<EntityDiscoveryProps> = ({
                 );
               })()}
             </div>
+            )}
           </>
         )}
       </div>
