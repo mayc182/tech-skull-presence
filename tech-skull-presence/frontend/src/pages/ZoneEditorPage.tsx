@@ -21,6 +21,7 @@ import {
   CanvasTopBar,
 } from '../components/CanvasLayout';
 import { DisplaySettingsControls } from '../components/DisplaySettingsControls';
+import { HPZoneModeControl } from '../components/HPZoneModeControl';
 import { useDisplaySettings } from '../hooks/useDisplaySettings';
 import { useIsMobileCanvas } from '../hooks/useMediaQuery';
 import { useDeviceMappings } from '../contexts/DeviceMappingsContext';
@@ -211,8 +212,10 @@ export const ZoneEditorPage: React.FC<ZoneEditorPageProps> = ({
   const activePolygonZones = isCeilingSliceMode ? [...ceilingSliceDisplayZones, ...ceilingExclusionDisplayZones] : polygonZones;
 
   // Device mappings context - used to check if device has valid entity mappings
-  const { hasValidMappings, clearCache } = useDeviceMappings();
+  const { hasValidMappings, clearCache, getEntityId } = useDeviceMappings();
   const deviceHasValidMappings = selectedRoom?.deviceId ? hasValidMappings(selectedRoom.deviceId) : false;
+  // LD2450 zone-mode select (Detection / Filter / Disabled). Present on HP-Lite.
+  const zoneModeEntityId = selectedRoom?.deviceId ? getEntityId(selectedRoom.deviceId, 'radarZoneMode') : null;
   const hasPropLiveStateForRoom = Boolean(
     propLiveState && selectedRoom?.deviceId && propLiveState.deviceId === selectedRoom.deviceId
   );
@@ -1671,6 +1674,11 @@ export const ZoneEditorPage: React.FC<ZoneEditorPageProps> = ({
               <div className="rounded-xl border border-violet-500/40 bg-violet-600/10 px-6 py-3 text-sm font-semibold text-violet-100 shadow-lg">
                 Polygon mode active
               </div>
+            )}
+
+            {/* LD2450 zone mode (Detection / Filter-exclusion). HP-Lite only. */}
+            {selectedRoom?.deviceId && zoneModeEntityId && (
+              <HPZoneModeControl deviceId={selectedRoom.deviceId} zoneModeEntityId={zoneModeEntityId} />
             )}
 
           </div>

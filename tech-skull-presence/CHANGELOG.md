@@ -2,6 +2,20 @@
 
 All notable changes to this add-on. Versions follow the `version:` field in `config.yaml`.
 
+## 0.2.1 — Zone exclusion (LD2450 Filter mode)
+
+- **New**: a **Zone Mode** selector in the Zone Editor toolbar for HP-Lite (LD2450),
+  bound to the `radar_modo_zonas` (`zone_type`) select.
+- Set **Filter** + draw a zone to make Home Assistant **ignore presence inside that
+  area** while still detecting the rest of the room — the requested exclusion-zone
+  use case. Options come live from the device (Detection / Filter / Disabled).
+- Reads current state + available options from HA; writes via the select domain.
+- The editor already renders detected targets (T1/T2/T3) live on the room plan, so
+  you can size zones around real positions while configuring.
+
+> The LD2450 applies one global mode to all zones (can't mix detect + exclude in the
+> same config). Use Filter to carve out ignore-areas.
+
 ## 0.2.0 — Device control panels (Phase 5)
 
 - **New: Device Controls panel** on the dashboard for HP LD2410 variants, adapting to each device's hardware:

@@ -117,6 +117,26 @@ The LD2450 reports each target's X/Y position, so you get a true top-down editor
 > The editor uses standard begin/end coordinates internally and maps them to the
 > firmware's `x1/y1/x2/y2` naming automatically.
 
+#### Zone mode: detection vs exclusion
+
+The Zone Editor toolbar shows a **Zone Mode** selector (LD2450 `zone_type`). It
+applies one global mode to all defined zones:
+
+| Mode          | Effect                                                                 |
+| :------------ | :-------------------------------------------------------------------- |
+| **Detection** | Only targets **inside** the zones are reported.                       |
+| **Filter**    | Targets **inside** the zones are **ignored** — presence elsewhere is still detected. |
+| **Disabled**  | Zones do nothing; the whole field of view is detected.                |
+
+**To make Home Assistant ignore presence in a specific area** (e.g. a fan, a
+pet bed, a doorway): draw a zone over that area and set **Zone Mode → Filter**.
+Anyone standing only inside that zone won't trigger `binary_sensor.${name}_presence`,
+while the rest of the room keeps working normally.
+
+> Limitation: the LD2450 applies the mode to **all** zones at once — you can't mix
+> "detect here, ignore there" in the same configuration. Use Filter to carve out
+> ignore-areas, or Detection to whitelist specific areas.
+
 ### 7b. LD2410 (HP-mini / Saladeestar / Luz / Niños) — 1D distance bands
 
 The LD2410 reports **distance only** (not X/Y), so "zones" are distance ranges
