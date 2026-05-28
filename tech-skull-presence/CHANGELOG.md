@@ -1,3 +1,12 @@
+## 0.1.2 — Profile auto-detection
+
+- **New**: the wizard now auto-detects the correct device profile from the device's actual entities, instead of matching by `model` (which always returned the first profile because every HP device reports `model = HP_series`). This is what caused `hp_01_saladeestar` to be assigned the `myumar_hp_lite` profile.
+- Backend: `GET /api/devices/:deviceId/suggest-profile` scores every profile against the device's entities (required entities dominate; the most complete optional match wins; tightest fit breaks ties) and returns a ranked suggestion.
+- Frontend: selecting a device in the wizard calls the suggestion endpoint and pre-selects the best-fit profile; falls back to model match / manual selection if the call fails.
+- Note: `myumar_hp_saladeestar` and `myumar_hp_ninos` expose identical entities (the RTTTL buzzer has no unique entity), so they're interchangeable from auto-detection's point of view — pick `ninos` manually if you want the buzzer panel later.
+
+---
+
 ## 0.1.1 — Matching robustness
 
 - **Fix**: entity auto-match now resolves suffix collisions via a shortest-id tie-breaker. Previously a template suffix like `_presence` matched `presence`, `moving_presence` and `still_presence` simultaneously and produced a "conflict" that left the required `presence` entity unmapped. The bare (shortest) entity is now picked automatically; genuine equal-length ties still require user review.

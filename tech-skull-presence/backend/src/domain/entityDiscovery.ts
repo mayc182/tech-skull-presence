@@ -85,6 +85,104 @@ export class EntityDiscoveryService {
   }
 
   /**
+   * Score every known profile against a device's actual entities and return a
+   * ranked list, best match first. Used to pre-select the right profile in the
+   * wizard when several profiles share the same manufacturer/model (e.g. the
+   * MYumar.HP_series family).
+   *
+   * Scoring rationale:
+   *  - A profile whose REQUIRED entities are all present is strongly preferred
+   *    (requiredRatio dominates the score).
+   *  - Among those, the profile that explains the MOST of the device's optional
+   *    entities wins (matchedOptional), so a superset profile (e.g. "luz" with
+   *    illuminance) beats a subset profile when the device actually has the
+   *    extra sensors.
+   *  - Profiles that expect optional entities the device lacks get a small
+   *    penalty, breaking ties in favour of the tightest fit.
+   */
+  async suggestProfile(deviceId: string): Promise<{
+    deviceId: string;
+    suggestedProfileId: string | null;
+    ranking: Array<{
+      profileId: string;
+      label: string;
+      score: number;
+      matchedRequired: number;
+      totalRequired: number;
+      matchedOptional: number;
+      totalOptional: number;
+    }>;
+  }> {
+    const deviceEntities = await this.getDeviceEntities(deviceId);
+    const entitiesByDomain = this.groupEntitiesByDomain(deviceEntities);
+    const profiles = this.profileLoader.listProfiles();
+
+    const ranking = profiles.map((profile) => {
+      const profileEntities = (profile as unknown as Record<string, unknown>).entities as
+        | Record<string, EntityDefinitionWithTemplate>
+        | undefined;
+
+      let matchedRequired = 0;
+      let totalRequired = 0;
+      let matchedOptional = 0;
+      let totalOptional = 0;
+
+      if (profileEntities) {
+        for (const [entityKey, def] of Object.entries(profileEntities)) {
+          if (!def.template) continue;
+          const result = this.matchTemplate(
+            entityKey,
+            def.template,
+            deviceEntities,
+            entitiesByDomain,
+            !def.required,
+            { zoneType: def.zoneType as 'regular' | 'entry' | 'exclusion' | undefined }
+          );
+          const matched = result.matchedEntityId !== null;
+          if (def.required) {
+            totalRequired++;
+            if (matched) matchedRequired++;
+          } else {
+            totalOptional++;
+            if (matched) matchedOptional++;
+          }
+        }
+      }
+
+      const requiredRatio = totalRequired > 0 ? matchedRequired / totalRequired : 1;
+      const optionalMissing = totalOptional - matchedOptional;
+      // requiredRatio dominates; matchedOptional rewards the most complete fit;
+      // optionalMissing breaks ties toward the tightest profile.
+      const score = requiredRatio * 1000 + matchedOptional * 10 - optionalMissing;
+
+      return {
+        profileId: profile.id,
+        label: profile.label,
+        score,
+        matchedRequired,
+        totalRequired,
+        matchedOptional,
+        totalOptional,
+      };
+    });
+
+    ranking.sort((a, b) => b.score - a.score);
+
+    // Only suggest a profile whose required entities are fully satisfied.
+    const best = ranking[0];
+    const suggestedProfileId =
+      best && best.totalRequired > 0 && best.matchedRequired === best.totalRequired
+        ? best.profileId
+        : best && best.totalRequired === 0
+          ? best.profileId
+          : null;
+
+    logger.info({ deviceId, suggestedProfileId, top: ranking.slice(0, 3) }, 'Profile suggestion computed');
+
+    return { deviceId, suggestedProfileId, ranking };
+  }
+
+  /**
    * Discover and match entities for a device against a profile.
    * Prefers profile.entities metadata when available, falls back to legacy entityMap.
    */

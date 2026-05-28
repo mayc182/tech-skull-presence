@@ -49,6 +49,33 @@ export const createEntityDiscoveryRouter = (deps: EntityDiscoveryRouterDependenc
   });
 
   /**
+   * GET /api/devices/:deviceId/suggest-profile
+   * Score all known profiles against a device's actual entities and return a
+   * ranked suggestion. Lets the wizard pre-select the correct profile when
+   * several profiles share the same manufacturer/model.
+   *
+   * Response: { deviceId, suggestedProfileId, ranking[] }
+   */
+  router.get('/:deviceId/suggest-profile', async (req, res) => {
+    const { deviceId } = req.params;
+
+    if (!deviceId) {
+      return res.status(400).json({ error: 'deviceId is required' });
+    }
+
+    try {
+      const result = await discoveryService.suggestProfile(deviceId);
+      return res.json(result);
+    } catch (error) {
+      logger.error({ error, deviceId }, 'Profile suggestion failed');
+      return res.status(500).json({
+        error: 'Profile suggestion failed',
+        message: (error as Error).message,
+      });
+    }
+  });
+
+  /**
    * GET /api/devices/:deviceId/entities
    * Get all entities belonging to a device.
    * Useful for manual entity mapping UI.

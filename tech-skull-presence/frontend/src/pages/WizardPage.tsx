@@ -19,6 +19,7 @@ import { updateRoom } from '../api/rooms';
 import { useWallDrawing } from '../hooks/useWallDrawing';
 import { pushZonesToDevice, fetchZonesFromDevice, fetchPolygonModeStatus, setPolygonMode, fetchPolygonZonesFromDevice, pushPolygonZonesToDevice, PolygonModeStatus } from '../api/zones';
 import { fetchZoneAvailability, ingressAware } from '../api/client';
+import { suggestProfile } from '../api/entityDiscovery';
 import { useDeviceMappings } from '../contexts/DeviceMappingsContext';
 import { getInstallationAngleSuggestion } from '../utils/rotationSuggestion';
 import { useDisplaySettings } from '../hooks/useDisplaySettings';
@@ -2841,11 +2842,22 @@ export const WizardPage: React.FC<WizardPageProps> = ({
                   onClick={() => {
                     if (isAssigned) return;
                     setDeviceId(d.id);
-                    if (d.model) {
-                      // Try to match profile by model field (exact match with HA's device.model)
-                      const match = profiles.find((p) => (p as any).model === d.model);
-                      if (match) setProfileId(match.id);
-                    }
+                    // Match by model first as an instant default…
+                    const modelMatch = d.model
+                      ? profiles.find((p) => (p as any).model === d.model)
+                      : undefined;
+                    if (modelMatch) setProfileId(modelMatch.id);
+                    // …then refine with entity-based auto-detection. This is the
+                    // reliable path when several profiles share the same model
+                    // (e.g. the MYumar.HP_series family all report model HP_series),
+                    // where the model match would otherwise always pick the first.
+                    suggestProfile(d.id)
+                      .then((s) => {
+                        if (s.suggestedProfileId) setProfileId(s.suggestedProfileId);
+                      })
+                      .catch(() => {
+                        /* keep model match / manual selection on failure */
+                      });
                     // Auto-advance after brief delay for visual feedback
                     setTimeout(() => nextStep(), 600);
                   }}

@@ -87,6 +87,36 @@ export const discoverEntities = async (
 };
 
 /**
+ * Ranked profile suggestion for a device, computed from its actual entities.
+ */
+export interface ProfileSuggestion {
+  deviceId: string;
+  suggestedProfileId: string | null;
+  ranking: Array<{
+    profileId: string;
+    label: string;
+    score: number;
+    matchedRequired: number;
+    totalRequired: number;
+    matchedOptional: number;
+    totalOptional: number;
+  }>;
+}
+
+/**
+ * Ask the backend which profile best fits a device based on its entities.
+ * Used to pre-select the correct profile in the wizard.
+ */
+export const suggestProfile = async (deviceId: string): Promise<ProfileSuggestion> => {
+  const res = await fetch(ingressAware(`api/devices/${deviceId}/suggest-profile`));
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Profile suggestion failed: ${res.status} ${res.statusText} - ${text}`);
+  }
+  return res.json();
+};
+
+/**
  * Get all entities belonging to a device.
  */
 export const getDeviceEntities = async (
