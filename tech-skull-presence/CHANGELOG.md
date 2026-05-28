@@ -2,6 +2,14 @@
 
 All notable changes to this add-on. Versions follow the `version:` field in `config.yaml`.
 
+## 0.4.4 — Comfort panel rounding + hardware BOM
+
+- **Fix**: "Feels Like" no longer shows a raw float (e.g. 30.2951564788818°C) —
+  rounded to 1 decimal.
+- **Docs**: added `docs/HARDWARE-BOM.md` — a shopping list to build an EP-class DIY
+  sensor (LD2450 + PIR + SCD41 + SHT40 + BH1750 + WS2812 + buzzer on ESP32-S3),
+  mapping each part to the add-on features it unlocks.
+
 ## 0.4.3 — HP dashboard cleanup (buzzer, mmWave/PIR, fit, EP1 cruft)
 
 Adjusts the live dashboard so it reflects what HP LD2410 devices actually have:

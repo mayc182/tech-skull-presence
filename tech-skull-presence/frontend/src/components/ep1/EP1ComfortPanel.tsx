@@ -44,7 +44,9 @@ export const EP1ComfortPanel: React.FC<EP1ComfortPanelProps> = ({ temperature, h
         <div className="bg-slate-800/40 rounded-lg p-2">
           <div className="text-xs text-slate-500 mb-0.5">Feels Like</div>
           <div className="text-slate-200 font-medium">
-            {heatIndex !== null ? `${heatIndex}${tempUnit}` : `${temperature}${tempUnit}`}
+            {heatIndex !== null
+              ? `${heatIndex}${tempUnit}`
+              : `${Math.round(temperature * 10) / 10}${tempUnit}`}
           </div>
         </div>
       </div>
