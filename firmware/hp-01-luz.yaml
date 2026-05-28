@@ -1,0 +1,616 @@
+esphome:
+  name: "hp-01-luz"
+  friendly_name: HP-01-Luz
+  project:
+    name: "MYumar.HP_series"
+    version: "1.0.0"
+
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: esp-idf
+
+logger:
+
+api:
+  encryption:
+    key: !secret api_key_luz
+  services:
+    - service: calibrate_co2_value
+      variables:
+        co2_ppm: float
+      then:
+        - scd4x.perform_forced_calibration:
+            value: !lambda "return co2_ppm;"
+            id: scd40
+    - service: set_led_color
+      variables:
+        r: float
+        g: float
+        b: float
+        brightness: float
+      then:
+        - light.turn_on:
+            id: led
+            red: !lambda "return r;"
+            green: !lambda "return g;"
+            blue: !lambda "return b;"
+            brightness: !lambda "return brightness;"
+
+ota:
+  - platform: esphome
+    password: !secret ota_password_luz
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "Hp-01-Luz Fallback Hotspot"
+    password: !secret wifi_password_ap
+
+captive_portal:
+
+esp32_ble_tracker:
+  scan_parameters:
+    interval: 1100ms
+    window: 1100ms
+    active: true
+
+bluetooth_proxy:
+  active: true
+
+web_server:
+  port: 80
+  include_internal: true
+
+# ============================================================
+# SUBSTITUCIONES
+# ============================================================
+substitutions:
+  tx_pin: GPIO21   # LD2410: TX ESP → RX sensor
+  rx_pin: GPIO20   # LD2410: RX ESP ← TX sensor
+  sda_pin: GPIO06
+  scl_pin: GPIO07
+  led_pin: GPIO05
+
+# ============================================================
+# VARIABLES GLOBALES
+# ============================================================
+globals:
+  - id: co2_previous
+    type: float
+    restore_value: false
+    initial_value: '0'
+
+# ============================================================
+# UART / LD2410
+# ============================================================
+uart:
+  tx_pin: ${tx_pin}
+  rx_pin: ${rx_pin}
+  baud_rate: 256000
+  parity: NONE
+  stop_bits: 1
+
+ld2410:
+  id: ld2410_device
+
+i2c:
+  sda: ${sda_pin}
+  scl: ${scl_pin}
+  scan: true 
+  
+# ============================================================
+# SCRIPTS
+# ============================================================
+script:
+
+  # ----------------------------------------------------------
+  # Actualiza el LED según CO2 + presencia + modo no molestar
+  # ----------------------------------------------------------
+  - id: update_led_co2
+    then:
+      - if:
+          condition:
+            lambda: 'return id(no_disturb_switch).state || !id(binary_has_target).state;'
+          then:
+            - light.turn_off: led
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(co2_sensor).state <= 800;'
+                then:
+                  - light.turn_on:
+                      id: led
+                      brightness: 40%
+                      red: 0%
+                      green: 100%
+                      blue: 0%
+                      effect: "None"
+            - if:
+                condition:
+                  lambda: 'return id(co2_sensor).state > 800 && id(co2_sensor).state <= 1000;'
+                then:
+                  - light.turn_on:
+                      id: led
+                      brightness: 40%
+                      red: 100%
+                      green: 85%
+                      blue: 0%
+                      effect: "None"
+            - if:
+                condition:
+                  lambda: 'return id(co2_sensor).state > 1000 && id(co2_sensor).state <= 1500;'
+                then:
+                  - light.turn_on:
+                      id: led
+                      brightness: 60%
+                      red: 100%
+                      green: 55%
+                      blue: 0%
+                      effect: "None"
+            - if:
+                condition:
+                  lambda: 'return id(co2_sensor).state > 1500 && id(co2_sensor).state <= 2000;'
+                then:
+                  - light.turn_on:
+                      id: led
+                      brightness: 80%
+                      red: 100%
+                      green: 0%
+                      blue: 0%
+                      effect: "None"
+            - if:
+                condition:
+                  lambda: 'return id(co2_sensor).state > 2000;'
+                then:
+                  - light.turn_on:
+                      id: led
+                      brightness: 100%
+                      red: 100%
+                      green: 0%
+                      blue: 0%
+                      effect: "Pulse"
+
+# ============================================================
+# SENSORES
+# ============================================================
+sensor:
+  - platform: scd4x
+    id: scd40
+    automatic_self_calibration: false
+
+    co2:
+      name: "SCD40 CO2"
+      id: co2_sensor
+      filters:
+        - sliding_window_moving_average:
+            window_size: 5
+            send_every: 1
+      on_value:
+        - script.execute: update_led_co2
+
+    temperature:
+      name: "CO2 Temperature"
+      id: temperature
+      filters:
+        # Offset calibrado: el SCD40 está cerca del ESP32-C3
+        # que genera calor residual (~9°C medidos empíricamente)
+        - lambda: 'return x - id(scd40_temperature_offset).state;'
+
+    humidity:
+      name: "CO2 Humidity"
+      id: humidity
+      filters:
+        - lambda: 'return x - id(scd40_humidity_offset).state;'
+
+  - platform: template
+    name: "CO2 Trend"
+    id: co2_trend
+    unit_of_measurement: "ppm/min"
+    accuracy_decimals: 0
+    icon: "mdi:trending-up"
+    update_interval: 60s
+    lambda: |-
+      float current = id(co2_sensor).state;
+      float trend = current - id(co2_previous);
+      id(co2_previous) = current;
+      return trend;
+
+  - platform: template
+    name: "Last Detection Distance"
+    id: last_detection_distance
+    unit_of_measurement: cm
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: |-
+      if ((id(binary_has_target).state) && (id(presence_det_dist).state > 0)) {
+        return id(presence_det_dist).state;
+      } else {
+        return {};
+      }
+
+  - platform: ld2410
+    light:
+      name: "Light"
+    moving_distance:
+      name: "Moving Distance"
+    still_distance:
+      name: "Still Distance"
+    moving_energy:
+      name: "Move Energy"
+    still_energy:
+      name: "Still Energy"
+    detection_distance:
+      name: "Detection Distance"
+      id: presence_det_dist
+    g0:
+      move_energy:
+        name: "G0 move energy"
+      still_energy:
+        name: "G0 still energy"
+    g1:
+      move_energy:
+        name: "G1 move energy"
+      still_energy:
+        name: "G1 still energy"
+    g2:
+      move_energy:
+        name: "G2 move energy"
+      still_energy:
+        name: "G2 still energy"
+    g3:
+      move_energy:
+        name: "G3 move energy"
+      still_energy:
+        name: "G3 still energy"
+    g4:
+      move_energy:
+        name: "G4 move energy"
+      still_energy:
+        name: "G4 still energy"
+    g5:
+      move_energy:
+        name: "G5 move energy"
+      still_energy:
+        name: "G5 still energy"
+    g6:
+      move_energy:
+        name: "G6 move energy"
+      still_energy:
+        name: "G6 still energy"
+    g7:
+      move_energy:
+        name: "G7 move energy"
+      still_energy:
+        name: "G7 still energy"
+    g8:
+      move_energy:
+        name: "G8 move energy"
+      still_energy:
+        name: "G8 still energy"
+
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+    entity_category: diagnostic
+    icon: "mdi:wifi"
+
+  - platform: uptime
+    name: "Uptime"
+    update_interval: 60s
+    entity_category: diagnostic
+    icon: "mdi:clock-start"
+
+  - platform: internal_temperature
+    name: "ESP32 Internal Temperature"
+    update_interval: 60s
+    entity_category: diagnostic
+    icon: "mdi:thermometer-chip"
+
+  # ---- BH1750 Sensor de luminosidad ------------------------
+  # Comparte bus I2C con el SCD40 (SDA GPIO6 / SCL GPIO7)
+  # Direccion por defecto: 0x23 (pin ADDR a GND)
+  # Si ADDR esta a VCC usar address: 0x5C
+  - platform: bh1750
+    name: "Illuminance"
+    id: illuminance
+    address: 0x23
+    update_interval: 10s
+    unit_of_measurement: "lx"
+    accuracy_decimals: 0
+    icon: "mdi:brightness-6"
+
+# ============================================================
+# SENSORES BINARIOS
+# ============================================================
+binary_sensor:
+  - platform: ld2410
+    has_target:
+      name: "Presence"
+      id: binary_has_target
+      on_state:
+        - script.execute: update_led_co2
+    has_moving_target:
+      name: "Moving presence"
+    has_still_target:
+      name: "Still presence"
+    out_pin_presence_status:
+      name: "Out pin presence status"
+
+  - platform: template
+    name: "Zone 1 Occupancy"
+    device_class: occupancy
+    icon: mdi:motion-sensor
+    lambda: |-
+      if ((id(binary_has_target).state) && ((id(last_detection_distance).state < id(presence_z1_end).state))) {
+        return true;
+      } else {
+        return false;
+      }
+  - platform: template
+    name: "Zone 2 Occupancy"
+    device_class: occupancy
+    icon: mdi:motion-sensor
+    lambda: |-
+      if ((id(binary_has_target).state) && ((id(presence_z1_end).state < id(last_detection_distance).state) && (id(last_detection_distance).state < id(presence_z2_end).state))) {
+        return true;
+      } else {
+        return false;
+      }
+  - platform: template
+    name: "Zone 3 Occupancy"
+    device_class: occupancy
+    icon: mdi:motion-sensor
+    lambda: |-
+      if ((id(binary_has_target).state) && ((id(presence_z2_end).state < id(last_detection_distance).state) && (id(last_detection_distance).state < id(presence_z3_end).state))) {
+        return true;
+      } else {
+        return false;
+      }
+
+  - platform: template
+    name: "Room Occupancy"
+    device_class: occupancy
+    icon: mdi:home-account
+    lambda: |-
+      return id(binary_has_target).state;
+
+# ============================================================
+# SWITCHES
+# ============================================================
+switch:
+  - platform: ld2410
+    engineering_mode:
+      name: "Engineering mode"
+    bluetooth:
+      name: "Control bluetooth"
+
+  - platform: template
+    name: "No Disturb Mode"
+    id: no_disturb_switch
+    icon: "mdi:bell-sleep"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    on_turn_on:
+      - light.turn_off: led
+    on_turn_off:
+      - script.execute: update_led_co2
+
+# ============================================================
+# BOTONES
+# ============================================================
+button:
+  - platform: ld2410
+    factory_reset:
+      entity_category: diagnostic
+      name: "LD 2410 Factory reset"
+    restart:
+      entity_category: diagnostic
+      name: "LD 2410 Restart"
+    query_params:
+      entity_category: diagnostic
+      name: "Query params"
+  - platform: restart
+    entity_category: diagnostic
+    icon: mdi:power-cycle
+    name: "ESP reboot"
+  - platform: factory_reset
+    name: "Restart ESP with Factory Default Settings"
+  - platform: template
+    name: "Calibrate SCD40 To 420ppm"
+    id: set_SCD40_calibrate
+    on_press:
+      - scd4x.perform_forced_calibration:
+          value: 420
+          id: scd40
+
+# ============================================================
+# NÚMEROS (configuración)
+# ============================================================
+number:
+  - platform: template
+    name: SCD40 Humidity Offset
+    id: scd40_humidity_offset
+    restore_value: true
+    initial_value: 0
+    min_value: -70.0
+    max_value: 70.0
+    entity_category: "CONFIG"
+    unit_of_measurement: "%"
+    optimistic: true
+    update_interval: never
+    step: 0.1
+    mode: box
+  - platform: template
+    name: SCD40 Temperature Offset
+    id: scd40_temperature_offset
+    restore_value: true
+    initial_value: 9.0
+    min_value: -70.0
+    max_value: 70.0
+    entity_category: "CONFIG"
+    unit_of_measurement: "°C"
+    optimistic: true
+    update_interval: never
+    step: 0.1
+    mode: box
+  - platform: ld2410
+    timeout:
+      name: "Timeout"
+      entity_category: config
+    light_threshold:
+      name: "Light threshold"
+      entity_category: config
+    max_move_distance_gate:
+      name: "Max move distance gate"
+      entity_category: config
+    max_still_distance_gate:
+      name: "Max still distance gate"
+      entity_category: config
+    g0:
+      move_threshold:
+        name: "G0 move threshold"
+      still_threshold:
+        name: "G0 still threshold"
+    g1:
+      move_threshold:
+        name: "G1 move threshold"
+      still_threshold:
+        name: "G1 still threshold"
+    g2:
+      move_threshold:
+        name: "G2 move threshold"
+      still_threshold:
+        name: "G2 still threshold"
+    g3:
+      move_threshold:
+        name: "G3 move threshold"
+      still_threshold:
+        name: "G3 still threshold"
+    g4:
+      move_threshold:
+        name: "G4 move threshold"
+      still_threshold:
+        name: "G4 still threshold"
+    g5:
+      move_threshold:
+        name: "G5 move threshold"
+      still_threshold:
+        name: "G5 still threshold"
+    g6:
+      move_threshold:
+        name: "G6 move threshold"
+      still_threshold:
+        name: "G6 still threshold"
+    g7:
+      move_threshold:
+        name: "G7 move threshold"
+      still_threshold:
+        name: "G7 still threshold"
+    g8:
+      move_threshold:
+        name: "G8 move threshold"
+      still_threshold:
+        name: "G8 still threshold"
+  - platform: template
+    name: "LDR Threshold"
+    id: ldr_sens
+    min_value: 20
+    max_value: 600
+    step: 1
+    mode: box
+    update_interval: never
+    optimistic: true
+    restore_value: true
+    initial_value: 310
+    icon: "mdi:head-lightbulb"
+    entity_category: CONFIG
+  - platform: template
+    name: "Zone 1 End Distance"
+    id: presence_z1_end
+    device_class: distance
+    min_value: 0
+    max_value: 600
+    step: 1
+    mode: box
+    update_interval: never
+    optimistic: true
+    restore_value: true
+    initial_value: 50
+    icon: "mdi:arrow-collapse-right"
+    entity_category: CONFIG
+  - platform: template
+    name: "Zone 2 End Distance"
+    id: presence_z2_end
+    device_class: distance
+    min_value: 0
+    max_value: 600
+    step: 1
+    mode: box
+    update_interval: never
+    optimistic: true
+    restore_value: true
+    initial_value: 100
+    icon: "mdi:arrow-collapse-right"
+    entity_category: CONFIG
+  - platform: template
+    name: "Zone 3 End Distance"
+    id: presence_z3_end
+    device_class: distance
+    min_value: 0
+    max_value: 600
+    step: 1
+    mode: box
+    update_interval: never
+    optimistic: true
+    restore_value: true
+    initial_value: 200
+    icon: "mdi:arrow-collapse-right"
+    entity_category: CONFIG
+
+# ============================================================
+# SENSORES DE TEXTO
+# ============================================================
+text_sensor:
+  - platform: ld2410
+    version:
+      name: "Firmware version"
+      entity_category: diagnostic
+    mac_address:
+      name: "Mac address"
+      entity_category: diagnostic
+
+# ============================================================
+# SELECTORES
+# ============================================================
+select:
+  - platform: ld2410
+    distance_resolution:
+      entity_category: config
+      name: "Distance resolution"
+    baud_rate:
+      entity_category: config
+      name: "Baud rate"
+
+# ============================================================
+# LED WS2812
+# ============================================================
+light:
+  - platform: esp32_rmt_led_strip
+    id: led
+    name: "CO2 LED"
+    pin: GPIO5
+    num_leds: 1
+    rgb_order: GRB
+    chipset: WS2812
+    default_transition_length: 0s
+    restore_mode: ALWAYS_OFF
+    effects:
+      - pulse:
+          name: "Pulse"
+          transition_length: 500ms
+          update_interval: 500ms
+          min_brightness: 50%
+          max_brightness: 100%

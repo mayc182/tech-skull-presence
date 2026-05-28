@@ -1,0 +1,183 @@
+esphome:
+  name: hp-02-lite-2
+  friendly_name: HP-02_Lite-2
+  project:
+    name: "MYumar.HP_series"
+    version: "1.0.0"
+
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: arduino # Cambiado a arduino para mejor compatibilidad con el componente ld2450
+
+# Configuración de Red y Seguridad
+api:
+  encryption:
+    key: !secret api_key_lite_2
+
+ota:
+  - platform: esphome
+    password: !secret ota_password_lite_2
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "Hp-02-Lite-2 Fallback Hotspot"
+    password: !secret wifi_password_ap
+
+captive_portal:
+
+web_server:
+  port: 80
+  include_internal: true
+
+# ===============================
+# LOGGER (CRÍTICO PARA ESP32-C3)
+# ===============================
+logger:
+  level: DEBUG
+  hardware_uart: USB_SERIAL_JTAG
+
+# ===============================
+# UART LD2450
+# ===============================
+uart:
+  - id: uart_ld2450
+    tx_pin: 21
+    rx_pin: 20
+    baud_rate: 9600
+    rx_buffer_size: 2048  # Esto elimina el error "Max command length exceeded"
+    parity: NONE
+    stop_bits: 1
+
+# ===============================
+# LD2450 CORE
+# ===============================
+ld2450:
+  id: ld2450_radar
+  uart_id: uart_ld2450
+
+# ===============================
+# BINARY SENSORS
+# ===============================
+binary_sensor:
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    has_target:
+      name: Presence
+    has_moving_target:
+      name: Moving Target
+    has_still_target:
+      name: Still Target
+
+# ===============================
+# SENSORS
+# ===============================
+sensor:
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    target_count:
+      name: Presence Target Count
+    still_target_count:
+      name: Still Target Count
+    moving_target_count:
+      name: Moving Target Count
+    target_1:
+      x: { name: Target-1 X }
+      y: { name: Target-1 Y }
+      distance: { name: Target-1 Distance }
+      speed: { name: Target-1 Speed }
+      angle: { name: Target-1 Angle }
+      resolution: { name: Target-1 Resolution }
+    target_2:
+      x: { name: Target-2 X }
+      y: { name: Target-2 Y }
+      distance: { name: Target-2 Distance }
+      speed: { name: Target-2 Speed }
+      angle: { name: Target-2 Angle }
+      resolution: { name: Target-2 Resolution }
+    target_3:
+      x: { name: Target-3 X }
+      y: { name: Target-3 Y }
+      distance: { name: Target-3 Distance }
+      speed: { name: Target-3 Speed }
+      angle: { name: Target-3 Angle }
+      resolution: { name: Target-3 Resolution }
+    zone_1:
+      target_count: { name: Zone-1 All Target Count }
+      still_target_count: { name: Zone-1 Still Target Count }
+      moving_target_count: { name: Zone-1 Moving Target Count }
+    zone_2:
+      target_count: { name: Zone-2 All Target Count }
+      still_target_count: { name: Zone-2 Still Target Count }
+      moving_target_count: { name: Zone-2 Moving Target Count }
+    zone_3:
+      target_count: { name: Zone-3 All Target Count }
+      still_target_count: { name: Zone-3 Still Target Count }
+      moving_target_count: { name: Zone-3 Moving Target Count }
+
+# ===============================
+# TEXT SENSORS
+# ===============================
+text_sensor:
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    version:
+      name: "LD2450 Firmware"
+    mac_address:
+      name: "LD2450 BT MAC"
+    target_1:
+      direction: { name: "Target-1 Direction" }
+    target_2:
+      direction: { name: "Target-2 Direction" }
+    target_3:
+      direction: { name: "Target-3 Direction" }
+
+# ===============================
+# NUMBERS, SELECTS, SWITCHES & BUTTONS
+# ===============================
+number:
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    presence_timeout:
+      name: "Timeout"
+    zone_1:
+      x1: { name: Zone-1 X1 }
+      y1: { name: Zone-1 Y1 }
+      x2: { name: Zone-1 X2 }
+      y2: { name: Zone-1 Y2 }
+    zone_2:
+      x1: { name: Zone-2 X1 }
+      y1: { name: Zone-2 Y1 }
+      x2: { name: Zone-2 X2 }
+      y2: { name: Zone-2 Y2 }
+    zone_3:
+      x1: { name: Zone-3 X1 }
+      y1: { name: Zone-3 Y1 }
+      x2: { name: Zone-3 X2 }
+      y2: { name: Zone-3 Y2 }
+
+select:
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    baud_rate:
+      name: "Radar Baud Rate"
+    zone_type:
+      name: "Radar Modo Zonas"
+
+switch:
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    bluetooth:
+      name: "Radar Bluetooth"
+    multi_target:
+      name: "Radar Multi Target Tracking"
+
+button:
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    restart:
+      name: "Radar Reiniciar"
+    factory_reset:
+      name: "Radar Reset Fábrica"

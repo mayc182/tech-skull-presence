@@ -2,6 +2,10 @@ node_modules/
 dist/
 build/
 *.log
+
+# Never commit real ESPHome secrets (only the .example template is tracked)
+secrets.yaml
+firmware/secrets.yaml
 .env
 .env.local
 .DS_Store

@@ -1,0 +1,799 @@
+esphome:
+  name: "hp-01-ninos"
+  friendly_name: HP-01-ninos
+  project:
+    name: "MYumar.HP_series"
+    version: "1.0.0"
+
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: arduino
+
+logger:
+
+api:
+  encryption:
+    key: !secret api_key_ninos
+  services:
+    - service: calibrate_co2_value
+      variables:
+        co2_ppm: float
+      then:
+        - scd4x.perform_forced_calibration:
+            value: !lambda "return co2_ppm;"
+            id: scd40
+    - service: set_led_color
+      variables:
+        r: float
+        g: float
+        b: float
+        brightness: float
+      then:
+        - light.turn_on:
+            id: led
+            red: !lambda "return r;"
+            green: !lambda "return g;"
+            blue: !lambda "return b;"
+            brightness: !lambda "return brightness;"
+
+ota:
+  - platform: esphome
+    password: !secret ota_password_ninos
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "Hp-01-Ninos Fallback Hotspot"
+    password: !secret wifi_password_ap
+
+captive_portal:
+
+esp32_ble_tracker:
+  scan_parameters:
+    interval: 1100ms
+    window: 1100ms
+    active: true
+
+bluetooth_proxy:
+  active: true
+
+web_server:
+  port: 80
+  include_internal: true
+
+# ============================================================
+# SUBSTITUCIONES
+# ============================================================
+substitutions:
+  tx_pin: GPIO21
+  rx_pin: GPIO20
+  sda_pin: GPIO06
+  scl_pin: GPIO07
+  led_pin: GPIO05
+  buzzer_pin: GPIO03
+
+# ============================================================
+# VARIABLES GLOBALES
+# ============================================================
+globals:
+  - id: co2_previous
+    type: float
+    restore_value: false
+    initial_value: '0'
+
+  # Rango actual: -1=inicio, 0=bueno, 1=moderado, 2=alto, 3=muy alto, 4=crítico
+  # Solo suena la melodía cuando cambia el rango, no en cada lectura
+  - id: co2_range_last
+    type: int
+    restore_value: false
+    initial_value: '-1'
+
+# ============================================================
+# UART / LD2410
+# ============================================================
+uart:
+  tx_pin: ${tx_pin}
+  rx_pin: ${rx_pin}
+  baud_rate: 256000
+  parity: NONE
+  stop_bits: 1
+
+ld2410:
+  id: ld2410_device
+
+i2c:
+  sda: ${sda_pin}
+  scl: ${scl_pin}
+
+# ============================================================
+# BUZZER PASIVO en GPIO8 — señal PWM por LEDC del ESP32-C3
+# ============================================================
+output:
+  - platform: ledc
+    pin: ${buzzer_pin}
+    id: buzzer_output
+
+# ============================================================
+# RTTTL — Motor de melodías para buzzer pasivo
+# Formato notas: c d e f g a b  (con # para sostenido, p=pausa)
+# Duraciones: 1=redonda 2=blanca 4=negra 8=corchea 16=semicorchea
+# gain: volumen 0.0–1.0
+# ============================================================
+rtttl:
+  output: buzzer_output
+  id: rtttl_player
+  gain: 0.6
+
+# ============================================================
+# SCRIPTS
+# ============================================================
+script:
+
+  # ----------------------------------------------------------
+  # RANGO 0 — CO2 <= 800 ppm  🟢 VERDE - Aire limpio
+  # Do-Mi-Sol-Do: acorde mayor ascendente. Positivo, tranquilizador.
+  # Suena como "bien hecho", confirma que todo está perfecto.
+  # Cooldown 60s para no repetir si el CO2 oscila en el límite.
+  # ----------------------------------------------------------
+  - id: melody_good
+    mode: single
+    then:
+      - rtttl.play:
+          rtttl: "Good:d=8,o=5,b=140:c,e,g,c6"
+      - wait_until:
+          condition:
+            lambda: 'return !id(rtttl_player).is_playing();'
+      - delay: 60s
+
+  # ----------------------------------------------------------
+  # RANGO 1 — CO2 801-1000 ppm  🟡 AMARILLO - Moderado
+  # Sol-La: dos notas neutras, breve. Notificación suave tipo
+  # "ojo, algo está cambiando" sin alarmar.
+  # ----------------------------------------------------------
+  - id: melody_moderate
+    mode: single
+    then:
+      - rtttl.play:
+          rtttl: "Mod:d=8,o=5,b=120:g,p,a"
+      - wait_until:
+          condition:
+            lambda: 'return !id(rtttl_player).is_playing();'
+      - delay: 60s
+
+  # ----------------------------------------------------------
+  # RANGO 2 — CO2 1001-1500 ppm  🟠 NARANJA - Atención
+  # Si-Sol-Mi: tres notas descendentes, tono tenso.
+  # La dirección hacia abajo transmite que algo no va bien.
+  # ----------------------------------------------------------
+  - id: melody_warning
+    mode: single
+    then:
+      - rtttl.play:
+          rtttl: "Warn:d=8,o=5,b=130:b,g,e,p"
+      - wait_until:
+          condition:
+            lambda: 'return !id(rtttl_player).is_playing();'
+      - delay: 60s
+
+  # ----------------------------------------------------------
+  # RANGO 3 — CO2 1501-2000 ppm  🔴 ROJO - Alerta
+  # Si-Sol alternado x2: clásico dos tonos de alarma.
+  # Inconfundible, abre la ventana.
+  # ----------------------------------------------------------
+  - id: melody_alert
+    mode: single
+    then:
+      - rtttl.play:
+          rtttl: "Alert:d=8,o=5,b=180:b,p,g,p,b,p,g"
+      - wait_until:
+          condition:
+            lambda: 'return !id(rtttl_player).is_playing();'
+      - delay: 90s
+
+  # ----------------------------------------------------------
+  # RANGO 4 — CO2 > 2000 ppm  🔴 ROJO PULSANTE - Crítico
+  # Si6 staccato rápido x5: máxima urgencia. No hay duda de
+  # que hay que ventilar inmediatamente.
+  # Cooldown reducido a 30s: es una emergencia.
+  # ----------------------------------------------------------
+  - id: melody_critical
+    mode: single
+    then:
+      - rtttl.play:
+          rtttl: "Crit:d=16,o=6,b=220:b,p,b,p,b,4p,b,p,b,p,b"
+      - wait_until:
+          condition:
+            lambda: 'return !id(rtttl_player).is_playing();'
+      - delay: 30s
+
+  # ----------------------------------------------------------
+  # Actualiza el LED según CO2 + presencia + modo no molestar
+  # ----------------------------------------------------------
+  - id: update_led_co2
+    then:
+      - if:
+          condition:
+            lambda: 'return id(no_disturb_switch).state || !id(binary_has_target).state;'
+          then:
+            - light.turn_off: led
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(co2_sensor).state <= 800;'
+                then:
+                  - light.turn_on:
+                      id: led
+                      brightness: 40%
+                      red: 0%
+                      green: 100%
+                      blue: 0%
+                      effect: "None"
+            - if:
+                condition:
+                  lambda: 'return id(co2_sensor).state > 800 && id(co2_sensor).state <= 1000;'
+                then:
+                  - light.turn_on:
+                      id: led
+                      brightness: 40%
+                      red: 100%
+                      green: 85%
+                      blue: 0%
+                      effect: "None"
+            - if:
+                condition:
+                  lambda: 'return id(co2_sensor).state > 1000 && id(co2_sensor).state <= 1500;'
+                then:
+                  - light.turn_on:
+                      id: led
+                      brightness: 60%
+                      red: 100%
+                      green: 55%
+                      blue: 0%
+                      effect: "None"
+            - if:
+                condition:
+                  lambda: 'return id(co2_sensor).state > 1500 && id(co2_sensor).state <= 2000;'
+                then:
+                  - light.turn_on:
+                      id: led
+                      brightness: 80%
+                      red: 100%
+                      green: 0%
+                      blue: 0%
+                      effect: "None"
+            - if:
+                condition:
+                  lambda: 'return id(co2_sensor).state > 2000;'
+                then:
+                  - light.turn_on:
+                      id: led
+                      brightness: 100%
+                      red: 100%
+                      green: 0%
+                      blue: 0%
+                      effect: "Pulse"
+
+# ============================================================
+# SENSORES
+# ============================================================
+sensor:
+  - platform: scd4x
+    id: scd40
+    automatic_self_calibration: false
+
+    co2:
+      name: "SCD40 CO2"
+      id: co2_sensor
+      filters:
+        - sliding_window_moving_average:
+            window_size: 5
+            send_every: 1
+      on_value:
+        # 1. Actualizar LED
+        - script.execute: update_led_co2
+
+        # 2. Detectar cambio de rango y tocar melodía correspondiente
+        #    La comprobación "co2_range_last != N" garantiza que solo
+        #    suena al CAMBIAR de rango, no en cada lectura.
+        #    mode: single en los scripts evita solapamiento de melodías.
+
+        - if:
+            condition:
+              lambda: 'return !id(no_disturb_switch).state && x <= 800 && id(co2_range_last) != 0;'
+            then:
+              - globals.set:
+                  id: co2_range_last
+                  value: '0'
+              - script.execute: melody_good
+
+        - if:
+            condition:
+              lambda: 'return !id(no_disturb_switch).state && x > 800 && x <= 1000 && id(co2_range_last) != 1;'
+            then:
+              - globals.set:
+                  id: co2_range_last
+                  value: '1'
+              - script.execute: melody_moderate
+
+        - if:
+            condition:
+              lambda: 'return !id(no_disturb_switch).state && x > 1000 && x <= 1500 && id(co2_range_last) != 2;'
+            then:
+              - globals.set:
+                  id: co2_range_last
+                  value: '2'
+              - script.execute: melody_warning
+
+        - if:
+            condition:
+              lambda: 'return !id(no_disturb_switch).state && x > 1500 && x <= 2000 && id(co2_range_last) != 3;'
+            then:
+              - globals.set:
+                  id: co2_range_last
+                  value: '3'
+              - script.execute: melody_alert
+
+        - if:
+            condition:
+              lambda: 'return !id(no_disturb_switch).state && x > 2000 && id(co2_range_last) != 4;'
+            then:
+              - globals.set:
+                  id: co2_range_last
+                  value: '4'
+              - script.execute: melody_critical
+
+    temperature:
+      name: "CO2 Temperature"
+      id: temperature
+      filters:
+        # Offset calibrado: el SCD40 está cerca del ESP32-C3
+        # que genera calor residual (~9°C medidos empíricamente)
+        - lambda: 'return x - id(scd40_temperature_offset).state;'
+
+    humidity:
+      name: "CO2 Humidity"
+      id: humidity
+      filters:
+        - lambda: 'return x - id(scd40_humidity_offset).state;'
+
+  - platform: template
+    name: "CO2 Trend"
+    id: co2_trend
+    unit_of_measurement: "ppm/min"
+    accuracy_decimals: 0
+    icon: "mdi:trending-up"
+    update_interval: 60s
+    lambda: |-
+      float current = id(co2_sensor).state;
+      float trend = current - id(co2_previous);
+      id(co2_previous) = current;
+      return trend;
+
+  - platform: template
+    name: "Last Detection Distance"
+    id: last_detection_distance
+    unit_of_measurement: cm
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: |-
+      if ((id(binary_has_target).state) && (id(presence_det_dist).state > 0)) {
+        return id(presence_det_dist).state;
+      } else {
+        return {};
+      }
+
+  - platform: ld2410
+    light:
+      name: "Light"
+    moving_distance:
+      name: "Moving Distance"
+    still_distance:
+      name: "Still Distance"
+    moving_energy:
+      name: "Move Energy"
+    still_energy:
+      name: "Still Energy"
+    detection_distance:
+      name: "Detection Distance"
+      id: presence_det_dist
+    g0:
+      move_energy:
+        name: "G0 move energy"
+      still_energy:
+        name: "G0 still energy"
+    g1:
+      move_energy:
+        name: "G1 move energy"
+      still_energy:
+        name: "G1 still energy"
+    g2:
+      move_energy:
+        name: "G2 move energy"
+      still_energy:
+        name: "G2 still energy"
+    g3:
+      move_energy:
+        name: "G3 move energy"
+      still_energy:
+        name: "G3 still energy"
+    g4:
+      move_energy:
+        name: "G4 move energy"
+      still_energy:
+        name: "G4 still energy"
+    g5:
+      move_energy:
+        name: "G5 move energy"
+      still_energy:
+        name: "G5 still energy"
+    g6:
+      move_energy:
+        name: "G6 move energy"
+      still_energy:
+        name: "G6 still energy"
+    g7:
+      move_energy:
+        name: "G7 move energy"
+      still_energy:
+        name: "G7 still energy"
+    g8:
+      move_energy:
+        name: "G8 move energy"
+      still_energy:
+        name: "G8 still energy"
+
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+    entity_category: diagnostic
+    icon: "mdi:wifi"
+
+  - platform: uptime
+    name: "Uptime"
+    update_interval: 60s
+    entity_category: diagnostic
+    icon: "mdi:clock-start"
+
+  - platform: internal_temperature
+    name: "ESP32 Internal Temperature"
+    update_interval: 60s
+    entity_category: diagnostic
+    icon: "mdi:thermometer-chip"
+
+# ============================================================
+# SENSORES BINARIOS
+# ============================================================
+binary_sensor:
+  - platform: ld2410
+    has_target:
+      name: "Presence"
+      id: binary_has_target
+      on_state:
+        - script.execute: update_led_co2
+    has_moving_target:
+      name: "Moving presence"
+    has_still_target:
+      name: "Still presence"
+    out_pin_presence_status:
+      name: "Out pin presence status"
+
+  - platform: template
+    name: "Zone 1 Occupancy"
+    device_class: occupancy
+    icon: mdi:motion-sensor
+    lambda: |-
+      if ((id(binary_has_target).state) && ((id(last_detection_distance).state < id(presence_z1_end).state))) {
+        return true;
+      } else {
+        return false;
+      }
+  - platform: template
+    name: "Zone 2 Occupancy"
+    device_class: occupancy
+    icon: mdi:motion-sensor
+    lambda: |-
+      if ((id(binary_has_target).state) && ((id(presence_z1_end).state < id(last_detection_distance).state) && (id(last_detection_distance).state < id(presence_z2_end).state))) {
+        return true;
+      } else {
+        return false;
+      }
+  - platform: template
+    name: "Zone 3 Occupancy"
+    device_class: occupancy
+    icon: mdi:motion-sensor
+    lambda: |-
+      if ((id(binary_has_target).state) && ((id(presence_z2_end).state < id(last_detection_distance).state) && (id(last_detection_distance).state < id(presence_z3_end).state))) {
+        return true;
+      } else {
+        return false;
+      }
+
+  - platform: template
+    name: "Room Occupancy"
+    device_class: occupancy
+    icon: mdi:home-account
+    lambda: |-
+      return id(binary_has_target).state;
+
+# ============================================================
+# SWITCHES
+# ============================================================
+switch:
+  - platform: ld2410
+    engineering_mode:
+      name: "Engineering mode"
+    bluetooth:
+      name: "Control bluetooth"
+
+  - platform: template
+    name: "No Disturb Mode"
+    id: no_disturb_switch
+    icon: "mdi:bell-sleep"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    on_turn_on:
+      - light.turn_off: led
+      - rtttl.stop:   # Para la melodía si estaba sonando
+    on_turn_off:
+      - script.execute: update_led_co2
+
+# ============================================================
+# BOTONES
+# ============================================================
+button:
+  - platform: ld2410
+    factory_reset:
+      entity_category: diagnostic
+      name: "LD 2410 Factory reset"
+    restart:
+      entity_category: diagnostic
+      name: "LD 2410 Restart"
+    query_params:
+      entity_category: diagnostic
+      name: "Query params"
+  - platform: restart
+    entity_category: diagnostic
+    icon: mdi:power-cycle
+    name: "ESP reboot"
+  - platform: factory_reset
+    name: "Restart ESP with Factory Default Settings"
+  - platform: template
+    name: "Calibrate SCD40 To 420ppm"
+    id: set_SCD40_calibrate
+    on_press:
+      - scd4x.perform_forced_calibration:
+          value: 420
+          id: scd40
+
+  # ---- Botones de prueba de melodías ------------------------
+  - platform: template
+    name: "🟢 Test Melodía Bueno (≤800)"
+    icon: "mdi:music-note"
+    on_press:
+      - script.stop: melody_good
+      - rtttl.play:
+          rtttl: "Good:d=8,o=5,b=140:c,e,g,c6"
+
+  - platform: template
+    name: "🟡 Test Melodía Moderado (800-1000)"
+    icon: "mdi:music-note"
+    on_press:
+      - script.stop: melody_moderate
+      - rtttl.play:
+          rtttl: "Mod:d=8,o=5,b=120:g,p,a"
+
+  - platform: template
+    name: "🟠 Test Melodía Atención (1000-1500)"
+    icon: "mdi:music-note"
+    on_press:
+      - script.stop: melody_warning
+      - rtttl.play:
+          rtttl: "Warn:d=8,o=5,b=130:b,g,e,p"
+
+  - platform: template
+    name: "🔴 Test Melodía Alerta (1500-2000)"
+    icon: "mdi:music-note"
+    on_press:
+      - script.stop: melody_alert
+      - rtttl.play:
+          rtttl: "Alert:d=8,o=5,b=180:b,p,g,p,b,p,g"
+
+  - platform: template
+    name: "🚨 Test Melodía Crítico (>2000)"
+    icon: "mdi:music-note-alert"
+    on_press:
+      - script.stop: melody_critical
+      - rtttl.play:
+          rtttl: "Crit:d=16,o=6,b=220:b,p,b,p,b,4p,b,p,b,p,b"
+
+# ============================================================
+# NÚMEROS (configuración)
+# ============================================================
+number:
+  - platform: template
+    name: SCD40 Humidity Offset
+    id: scd40_humidity_offset
+    restore_value: true
+    initial_value: -5
+    min_value: -70.0
+    max_value: 70.0
+    entity_category: "CONFIG"
+    unit_of_measurement: "%"
+    optimistic: true
+    update_interval: never
+    step: 0.1
+    mode: box
+  - platform: template
+    name: SCD40 Temperature Offset
+    id: scd40_temperature_offset
+    restore_value: true
+    initial_value: 8.0
+    min_value: -70.0
+    max_value: 70.0
+    entity_category: "CONFIG"
+    unit_of_measurement: "°C"
+    optimistic: true
+    update_interval: never
+    step: 0.1
+    mode: box
+  - platform: ld2410
+    timeout:
+      name: "Timeout"
+      entity_category: config
+    light_threshold:
+      name: "Light threshold"
+      entity_category: config
+    max_move_distance_gate:
+      name: "Max move distance gate"
+      entity_category: config
+    max_still_distance_gate:
+      name: "Max still distance gate"
+      entity_category: config
+    g0:
+      move_threshold:
+        name: "G0 move threshold"
+      still_threshold:
+        name: "G0 still threshold"
+    g1:
+      move_threshold:
+        name: "G1 move threshold"
+      still_threshold:
+        name: "G1 still threshold"
+    g2:
+      move_threshold:
+        name: "G2 move threshold"
+      still_threshold:
+        name: "G2 still threshold"
+    g3:
+      move_threshold:
+        name: "G3 move threshold"
+      still_threshold:
+        name: "G3 still threshold"
+    g4:
+      move_threshold:
+        name: "G4 move threshold"
+      still_threshold:
+        name: "G4 still threshold"
+    g5:
+      move_threshold:
+        name: "G5 move threshold"
+      still_threshold:
+        name: "G5 still threshold"
+    g6:
+      move_threshold:
+        name: "G6 move threshold"
+      still_threshold:
+        name: "G6 still threshold"
+    g7:
+      move_threshold:
+        name: "G7 move threshold"
+      still_threshold:
+        name: "G7 still threshold"
+    g8:
+      move_threshold:
+        name: "G8 move threshold"
+      still_threshold:
+        name: "G8 still threshold"
+  - platform: template
+    name: "LDR Threshold"
+    id: ldr_sens
+    min_value: 20
+    max_value: 600
+    step: 1
+    mode: box
+    update_interval: never
+    optimistic: true
+    restore_value: true
+    initial_value: 310
+    icon: "mdi:head-lightbulb"
+    entity_category: CONFIG
+  - platform: template
+    name: "Zone 1 End Distance"
+    id: presence_z1_end
+    device_class: distance
+    min_value: 0
+    max_value: 600
+    step: 1
+    mode: box
+    update_interval: never
+    optimistic: true
+    restore_value: true
+    initial_value: 50
+    icon: "mdi:arrow-collapse-right"
+    entity_category: CONFIG
+  - platform: template
+    name: "Zone 2 End Distance"
+    id: presence_z2_end
+    device_class: distance
+    min_value: 0
+    max_value: 600
+    step: 1
+    mode: box
+    update_interval: never
+    optimistic: true
+    restore_value: true
+    initial_value: 100
+    icon: "mdi:arrow-collapse-right"
+    entity_category: CONFIG
+  - platform: template
+    name: "Zone 3 End Distance"
+    id: presence_z3_end
+    device_class: distance
+    min_value: 0
+    max_value: 600
+    step: 1
+    mode: box
+    update_interval: never
+    optimistic: true
+    restore_value: true
+    initial_value: 200
+    icon: "mdi:arrow-collapse-right"
+    entity_category: CONFIG
+
+# ============================================================
+# SENSORES DE TEXTO
+# ============================================================
+text_sensor:
+  - platform: ld2410
+    version:
+      name: "Firmware version"
+      entity_category: diagnostic
+    mac_address:
+      name: "Mac address"
+      entity_category: diagnostic
+
+# ============================================================
+# SELECTORES
+# ============================================================
+select:
+  - platform: ld2410
+    distance_resolution:
+      entity_category: config
+      name: "Distance resolution"
+    baud_rate:
+      entity_category: config
+      name: "Baud rate"
+
+# ============================================================
+# LED WS2812
+# ============================================================
+light:
+  - platform: esp32_rmt_led_strip
+    id: led
+    name: "CO2 LED"
+    pin: GPIO5
+    num_leds: 1
+    rgb_order: GRB
+    chipset: WS2812
+    default_transition_length: 0s
+    restore_mode: ALWAYS_OFF
+    effects:
+      - pulse:
+          name: "Pulse"
+          transition_length: 500ms
+          update_interval: 500ms
+          min_brightness: 50%
+          max_brightness: 100%
