@@ -29,7 +29,7 @@ const defaultSettings: DisplaySettings = {
   showDoors: true,
   showZones: true,
   showDeviceIcon: true,
-  showDeviceRadar: false,
+  showDeviceRadar: true, // show the FoV coverage cone by default (helps aim the sensor during placement)
   showMaxDistanceOverlay: true,
   showTriggerDistanceOverlay: false,
   showTargets: true,

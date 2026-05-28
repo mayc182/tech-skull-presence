@@ -2,6 +2,13 @@
 
 All notable changes to this add-on. Versions follow the `version:` field in `config.yaml`.
 
+## 0.2.4 — Show coverage cone by default
+
+- The **Device coverage** overlay (the green field-of-view cone) now defaults to
+  **on**, so during placement you can see where the sensor is aimed and rotate it
+  with a real FoV reference. It was previously off by default, which is why no FoV
+  guide appeared. (You can still toggle it in the canvas display settings.)
+
 ## 0.2.3 — Hide firmware service mapping for DIY profiles
 
 - The wizard's **Firmware Service Mapping** section (Build Flags / Update Manifest)
