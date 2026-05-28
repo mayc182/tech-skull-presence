@@ -1,3 +1,12 @@
+## 0.1.1 — Matching robustness
+
+- **Fix**: entity auto-match now resolves suffix collisions via a shortest-id tie-breaker. Previously a template suffix like `_presence` matched `presence`, `moving_presence` and `still_presence` simultaneously and produced a "conflict" that left the required `presence` entity unmapped. The bare (shortest) entity is now picked automatically; genuine equal-length ties still require user review.
+- This makes the `myumar_hp_mini` profile (which exposes `presence` + `moving_presence` + `still_presence`) map cleanly without manual intervention.
+
+> Reminder: assign the **correct profile per device** in the wizard — all HP devices share `manufacturer=MYumar`, so the wizard cannot yet auto-pick the variant. Match LD2410+SCD40 devices to `myumar_hp_saladeestar`/`luz`/`ninos`, bare LD2410 to `myumar_hp_mini`, and the LD2450 device to `myumar_hp_lite`.
+
+---
+
 ## 0.1.0 — MYumar.HP_series fork
 
 First release of **Tech Skull Presence**, a fork of [everything-presence-mmwave-configurator](https://github.com/EverythingSmartHome/everything-presence-addons) tailored to the MYumar.HP_series family of DIY ESP32-C3 presence sensors.

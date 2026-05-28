@@ -397,14 +397,40 @@ export class EntityDiscoveryService {
           'Entity matched'
         );
       } else {
-        // Conflict: multiple equally good candidates, require user review
-        result.matchConfidence = 'conflict';
-        const conflictCandidates = candidates.map((m) => m.entity.entity_id);
-        logger.debug(
-          { templateKey, candidates: conflictCandidates },
-          'Multiple candidates matched equally; marking for review'
+        // Tie-breaker: when several entities share the top score, prefer the
+        // most direct match (shortest entity_id). This resolves suffix
+        // collisions where a template suffix is also a tail of a longer
+        // entity, e.g. template `_presence` matching `presence`,
+        // `moving_presence` and `still_presence`. The bare `presence` entity
+        // (shortest) is the intended match. We only auto-resolve when there is
+        // a strictly-shortest candidate; equal-length ties remain a conflict.
+        const byDirectness = [...candidates].sort(
+          (a, b) => a.entity.entity_id.length - b.entity.entity_id.length
         );
-        telemetry.conflict(templateKey, conflictCandidates);
+        const shortest = byDirectness[0];
+        const runnerUp = byDirectness[1];
+        if (shortest.entity.entity_id.length < runnerUp.entity.entity_id.length) {
+          result.matchedEntityId = shortest.entity.entity_id;
+          result.matchConfidence = shortest.confidence;
+          logger.debug(
+            {
+              templateKey,
+              matched: shortest.entity.entity_id,
+              confidence: shortest.confidence,
+              resolvedFrom: candidates.map((m) => m.entity.entity_id),
+            },
+            'Entity matched via shortest-id tie-breaker'
+          );
+        } else {
+          // Genuine tie (same length): require user review.
+          result.matchConfidence = 'conflict';
+          const conflictCandidates = candidates.map((m) => m.entity.entity_id);
+          logger.debug(
+            { templateKey, candidates: conflictCandidates },
+            'Multiple candidates matched equally; marking for review'
+          );
+          telemetry.conflict(templateKey, conflictCandidates);
+        }
       }
     }
 
