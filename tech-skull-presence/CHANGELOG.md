@@ -2,6 +2,15 @@
 
 All notable changes to this add-on. Versions follow the `version:` field in `config.yaml`.
 
+## 0.2.6 — Clearer zone types
+
+- The per-zone **type dropdown** (regular/exclusion/entry) is now hidden when the
+  device profile only supports one zone type (e.g. LD2450). It offered options the
+  hardware can't honour and reverted to "regular", which was confusing. Replaced
+  with a small "Behaviour set by Zone Mode" hint, pointing to the single global
+  Detection/Filter control.
+- The wizard passes the device's actually-supported zone types to the editor.
+
 ## 0.2.5 — Fix invisible/undraggable device marker
 
 - Removed the broken `iconUrl: "./icon.png"` from all HP profiles. That relative

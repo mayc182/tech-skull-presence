@@ -5,28 +5,46 @@ interface ZoneEditorProps {
   zone: ZoneRect;
   onChange: (zone: ZoneRect) => void;
   onDelete?: (id: string) => void;
+  /**
+   * Zone types the device supports. When only one type is allowed (e.g. the
+   * LD2450, which has no separate exclusion/entry zones — behaviour is set by a
+   * single global Zone Mode), the per-zone type dropdown is hidden to avoid
+   * offering options the hardware can't honour.
+   */
+  allowedTypes?: ZoneRect['type'][];
 }
 
-const zoneTypes: ZoneRect['type'][] = ['regular', 'exclusion', 'entry'];
+const ALL_ZONE_TYPES: ZoneRect['type'][] = ['regular', 'exclusion', 'entry'];
 
-export const ZoneEditor: React.FC<ZoneEditorProps> = ({ zone, onChange, onDelete }) => {
+export const ZoneEditor: React.FC<ZoneEditorProps> = ({ zone, onChange, onDelete, allowedTypes }) => {
   const update = (patch: Partial<ZoneRect>) => onChange({ ...zone, ...patch });
+  const types = allowedTypes && allowedTypes.length > 0 ? allowedTypes : ALL_ZONE_TYPES;
+  const multiType = types.length > 1;
 
   return (
     <div className="space-y-2 rounded-lg border border-slate-700/50 bg-slate-900/60 p-3">
       <div className="flex items-center justify-between text-sm text-slate-200">
         <span>{zone.id}</span>
-        <select
-          className="rounded-md border border-slate-700 bg-slate-800/60 px-2 py-1 text-xs text-slate-200 focus:border-aqua-500 focus:ring-1 focus:ring-aqua-500/50 focus:outline-none"
-          value={zone.type}
-          onChange={(e) => update({ type: e.target.value as ZoneRect['type'] })}
-        >
-          {zoneTypes.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
+        {multiType ? (
+          <select
+            className="rounded-md border border-slate-700 bg-slate-800/60 px-2 py-1 text-xs text-slate-200 focus:border-aqua-500 focus:ring-1 focus:ring-aqua-500/50 focus:outline-none"
+            value={zone.type}
+            onChange={(e) => update({ type: e.target.value as ZoneRect['type'] })}
+          >
+            {types.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span
+            className="rounded-md border border-slate-700 bg-slate-800/40 px-2 py-1 text-[11px] text-slate-400"
+            title="This radar uses one global Zone Mode (Detection / Filter) for all zones — set it in the Zone Editor."
+          >
+            Behaviour set by Zone Mode
+          </span>
+        )}
       </div>
       <label className="flex items-center gap-2 text-xs text-slate-300">
         <span className="w-10">Label</span>

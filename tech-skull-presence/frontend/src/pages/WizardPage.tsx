@@ -229,6 +229,18 @@ export const WizardPage: React.FC<WizardPageProps> = ({
     return Boolean(caps?.tracking) && !caps?.distanceOnlyTracking;
   }, [currentProfile]);
 
+  // Which per-zone types the device actually supports. LD2450 (and similar)
+  // have no separate exclusion/entry zones — behaviour is set by one global
+  // Zone Mode — so only "regular" is offered and the type dropdown is hidden.
+  const allowedZoneTypes = useMemo<ZoneRect['type'][]>(() => {
+    const caps = currentProfile?.capabilities as { exclusionZones?: boolean; entryZones?: boolean } | undefined;
+    const limits = currentProfile?.limits;
+    const types: ZoneRect['type'][] = ['regular'];
+    if (caps?.exclusionZones || (limits?.maxExclusionZones ?? 0) > 0) types.push('exclusion');
+    if (caps?.entryZones || (limits?.maxEntryZones ?? 0) > 0) types.push('entry');
+    return types;
+  }, [currentProfile]);
+
   // Device mappings context - used for entity resolution and validation
   const { hasValidMappings, getEntityId, getMapping } = useDeviceMappings();
   const isMobileCanvas = useIsMobileCanvas();
@@ -2645,6 +2657,7 @@ export const WizardPage: React.FC<WizardPageProps> = ({
                         <ZoneEditor
                           key={zone.id}
                           zone={zone}
+                          allowedTypes={allowedZoneTypes}
                           onChange={(updated) => {
                             const newDisplayZones = displayZones.map((z) =>
                               z.id === updated.id ? { ...updated, enabled: true } : z
