@@ -510,6 +510,13 @@ export function createLiveRouter(
         case 'input_boolean':
           await writeClient.setInputBooleanEntity(entityId, value as boolean);
           break;
+        case 'light':
+          await writeClient.setLightEntity(entityId, value as boolean);
+          break;
+        case 'button':
+          // Buttons are stateless: any truthy value triggers a press.
+          await writeClient.pressButton(entityId);
+          break;
         default:
           return res.status(400).json({ error: `Unsupported entity domain: ${domain}` });
       }

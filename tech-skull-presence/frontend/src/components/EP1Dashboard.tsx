@@ -5,6 +5,7 @@ import { EP1SettingsHelper } from './EP1SettingsHelper';
 import { EP1DistanceArc } from './EP1DistanceArc';
 import { ZoneCanvas } from './ZoneCanvas';
 import { HPDistanceBandsPanel } from './HPDistanceBandsPanel';
+import { HPControlsPanel } from './HPControlsPanel';
 import { useDeviceMappings } from '../contexts/DeviceMappingsContext';
 import {
   EP1ComfortPanel,
@@ -34,6 +35,12 @@ export const EP1Dashboard: React.FC<EP1DashboardProps> = ({ roomId, room, liveSt
     if (z1 && z2 && z3) return { zone1: z1, zone2: z2, zone3: z3 };
     return null;
   })();
+
+  // Device-specific controls (No-Disturb / CO2 LED / buzzer) for HP LD2410 variants.
+  const hpNoDisturbEntity = room.deviceId ? getEntityId(room.deviceId, 'noDisturbMode') : null;
+  const hpCo2LedEntity = room.deviceId ? getEntityId(room.deviceId, 'co2Led') : null;
+  const hpHasBuzzer = room.profileId === 'myumar_hp_ninos';
+  const showHpControls = Boolean(room.deviceId && (hpNoDisturbEntity || hpCo2LedEntity || hpHasBuzzer));
 
   if (!liveState) {
     return (
@@ -158,6 +165,16 @@ export const EP1Dashboard: React.FC<EP1DashboardProps> = ({ roomId, room, liveSt
                 zoneEndEntities={hpZoneEndEntities}
                 liveDistanceCm={liveState.distance != null ? Math.round(liveState.distance * 100) : null}
                 zoneOccupancy={liveState.zoneOccupancy}
+              />
+            )}
+
+            {/* MYumar.HP_series device controls: No-Disturb, CO2 LED, buzzer tester */}
+            {showHpControls && room.deviceId && (
+              <HPControlsPanel
+                deviceId={room.deviceId}
+                noDisturbEntityId={hpNoDisturbEntity}
+                co2LedEntityId={hpCo2LedEntity}
+                hasBuzzer={hpHasBuzzer}
               />
             )}
 

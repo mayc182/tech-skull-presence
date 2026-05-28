@@ -2,6 +2,17 @@
 
 All notable changes to this add-on. Versions follow the `version:` field in `config.yaml`.
 
+## 0.2.0 — Device control panels (Phase 5)
+
+- **New: Device Controls panel** on the dashboard for HP LD2410 variants, adapting to each device's hardware:
+  - **No-Disturb toggle** — flips `switch.${name}_no_disturb_mode` (silences the CO2 LED, and the buzzer on Niños).
+  - **CO2 LED toggle** — turns the WS2812 indicator (`light.${name}_co2_led`) on/off.
+  - **Buzzer melody tester** (Niños) — discovers the device's melody/test `button.*` entities dynamically (their slugs are unpredictable due to emoji/accents in firmware names) and renders a play button for each.
+- **Backend**: the entity write endpoint now supports the `light` (turn_on/off) and `button` (press) domains, in addition to number/select/switch/input_boolean. Added `setLightEntity` and `pressButton` to the write client.
+- Panel visibility is capability-gated: it only appears when the relevant entities are mapped, and the buzzer section only for the `myumar_hp_ninos` profile.
+
+> Still planned: multi-device "virtual rooms" (aggregate several HP devices into one logical space).
+
 ## 0.1.3 — Documentation
 
 - Rewrote the in-add-on **Documentation** tab (`DOCS.md`) as a complete user manual for Tech Skull Presence: install, setup wizard, profiles, 2D + 1D zone editors, dashboards, updating and troubleshooting. (Previously still showed Everything Presence / Zone Configurator content.)
