@@ -2,6 +2,15 @@
 
 All notable changes to this add-on. Versions follow the `version:` field in `config.yaml`.
 
+## 0.2.5 — Fix invisible/undraggable device marker
+
+- Removed the broken `iconUrl: "./icon.png"` from all HP profiles. That relative
+  path isn't a served asset (404), so the device's `<image>` rendered blank —
+  making the radar marker invisible and impossible to drag during placement.
+  With no `iconUrl`, the canvas now draws its built-in fallback device marker,
+  which is visible and draggable. Combined with 0.2.4 (coverage cone on), the
+  sensor and its FoV now appear in the placement step.
+
 ## 0.2.4 — Show coverage cone by default
 
 - The **Device coverage** overlay (the green field-of-view cone) now defaults to

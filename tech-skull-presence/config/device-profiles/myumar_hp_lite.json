@@ -4,7 +4,6 @@
   "label": "HP-Lite (LD2450 2D)",
   "model": "HP_series",
   "manufacturer": "MYumar",
-  "iconUrl": "./icon.png",
   "capabilities": {
     "tracking": true,
     "zones": true,

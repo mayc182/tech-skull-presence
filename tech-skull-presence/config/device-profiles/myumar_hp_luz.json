@@ -4,7 +4,6 @@
   "label": "HP-Luz (LD2410 + SCD40 + BH1750 + LED)",
   "model": "HP_series",
   "manufacturer": "MYumar",
-  "iconUrl": "./icon.png",
   "capabilities": {
     "tracking": false,
     "zones": false,

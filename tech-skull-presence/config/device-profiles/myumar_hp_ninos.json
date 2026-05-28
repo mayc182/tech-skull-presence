@@ -4,7 +4,6 @@
   "label": "HP-Ninos (LD2410 + SCD40 + LED + Buzzer)",
   "model": "HP_series",
   "manufacturer": "MYumar",
-  "iconUrl": "./icon.png",
   "capabilities": {
     "tracking": false,
     "zones": false,

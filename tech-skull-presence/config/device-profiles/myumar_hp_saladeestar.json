@@ -4,7 +4,6 @@
   "label": "HP-Saladeestar (LD2410 + SCD40 + LED)",
   "model": "HP_series",
   "manufacturer": "MYumar",
-  "iconUrl": "./icon.png",
   "capabilities": {
     "tracking": false,
     "zones": false,
