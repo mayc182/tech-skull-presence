@@ -3,7 +3,7 @@ esphome:
   friendly_name: HP-02_Lite-2
   project:
     name: "MYumar.HP_series"
-    version: "1.0.0"
+    version: "1.2.0"
 
 esp32:
   board: esp32-c3-devkitm-1
@@ -65,6 +65,27 @@ ld2450:
   uart_id: uart_ld2450
 
 # ===============================
+# GLOBALS — máquina de estados Entry/Exit (presencia asumida)
+# ===============================
+globals:
+  - id: ee_assumed
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: ee_present_prev
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: ee_last_in_entry
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: ee_assumed_since_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+
+# ===============================
 # BINARY SENSORS
 # ===============================
 binary_sensor:
@@ -72,10 +93,20 @@ binary_sensor:
     ld2450_id: ld2450_radar
     has_target:
       name: Presence
+      id: ld2450_presence
     has_moving_target:
       name: Moving Target
     has_still_target:
       name: Still Target
+
+  # Presencia asumida (entry/exit): mantiene ocupada la sala cuando se pierde
+  # a una persona quieta, y la libera cuando alguien sale por la entry zone.
+  - platform: template
+    name: "Assumed Present"
+    id: assumed_present
+    device_class: occupancy
+    icon: mdi:home-account
+    lambda: 'return id(ee_assumed);'
 
 # ===============================
 # SENSORS
@@ -90,22 +121,22 @@ sensor:
     moving_target_count:
       name: Moving Target Count
     target_1:
-      x: { name: Target-1 X }
-      y: { name: Target-1 Y }
+      x: { name: Target-1 X, id: t1x }
+      y: { name: Target-1 Y, id: t1y }
       distance: { name: Target-1 Distance }
       speed: { name: Target-1 Speed }
       angle: { name: Target-1 Angle }
       resolution: { name: Target-1 Resolution }
     target_2:
-      x: { name: Target-2 X }
-      y: { name: Target-2 Y }
+      x: { name: Target-2 X, id: t2x }
+      y: { name: Target-2 Y, id: t2y }
       distance: { name: Target-2 Distance }
       speed: { name: Target-2 Speed }
       angle: { name: Target-2 Angle }
       resolution: { name: Target-2 Resolution }
     target_3:
-      x: { name: Target-3 X }
-      y: { name: Target-3 Y }
+      x: { name: Target-3 X, id: t3x }
+      y: { name: Target-3 Y, id: t3y }
       distance: { name: Target-3 Distance }
       speed: { name: Target-3 Speed }
       angle: { name: Target-3 Angle }
@@ -122,6 +153,21 @@ sensor:
       target_count: { name: Zone-3 All Target Count }
       still_target_count: { name: Zone-3 Still Target Count }
       moving_target_count: { name: Zone-3 Moving Target Count }
+
+  # Segundos restantes de presencia asumida antes de liberar la sala.
+  - platform: template
+    name: "Assumed Present Remaining"
+    id: assumed_present_remaining
+    unit_of_measurement: s
+    accuracy_decimals: 0
+    icon: mdi:timer-sand
+    update_interval: 1s
+    lambda: |-
+      if (!id(ee_assumed) || id(ee_assumed_since_ms) == 0) return 0.0;
+      uint32_t to_ms = (uint32_t)(id(assume_present_timeout).state * 1000.0);
+      uint32_t elapsed = millis() - id(ee_assumed_since_ms);
+      if (elapsed >= to_ms) return 0.0;
+      return (float)(to_ms - elapsed) / 1000.0;
 
 # ===============================
 # TEXT SENSORS
@@ -164,6 +210,76 @@ number:
       x2: { name: Zone-3 X2 }
       y2: { name: Zone-3 Y2 }
 
+  # Tiempo que la sala permanece "asumida ocupada" tras perder a alguien
+  # quieto (sin que se le viera salir por la entry zone).
+  - platform: template
+    name: "Assume Present Timeout"
+    id: assume_present_timeout
+    unit_of_measurement: s
+    min_value: 0
+    max_value: 600
+    step: 1
+    initial_value: 30
+    optimistic: true
+    restore_value: true
+    mode: box
+    entity_category: config
+    icon: mdi:timer-cog
+
+  # Entry Zone 1 (puerta): rectángulo en coordenadas del radar (mm).
+  - platform: template
+    name: "Entry Zone 1 X1"
+    id: ez1x1
+    device_class: distance
+    unit_of_measurement: mm
+    min_value: -4800
+    max_value: 4800
+    step: 50
+    initial_value: -500
+    optimistic: true
+    restore_value: true
+    mode: box
+    entity_category: config
+  - platform: template
+    name: "Entry Zone 1 Y1"
+    id: ez1y1
+    device_class: distance
+    unit_of_measurement: mm
+    min_value: 0
+    max_value: 6000
+    step: 50
+    initial_value: 0
+    optimistic: true
+    restore_value: true
+    mode: box
+    entity_category: config
+  - platform: template
+    name: "Entry Zone 1 X2"
+    id: ez1x2
+    device_class: distance
+    unit_of_measurement: mm
+    min_value: -4800
+    max_value: 4800
+    step: 50
+    initial_value: 500
+    optimistic: true
+    restore_value: true
+    mode: box
+    entity_category: config
+  - platform: template
+    name: "Entry Zone 1 Y2"
+    id: ez1y2
+    device_class: distance
+    unit_of_measurement: mm
+    min_value: 0
+    max_value: 6000
+    step: 50
+    initial_value: 1000
+    optimistic: true
+    restore_value: true
+    mode: box
+    entity_category: config
+
 select:
   - platform: ld2450
     ld2450_id: ld2450_radar
@@ -180,6 +296,14 @@ switch:
     multi_target:
       name: "Radar Multi Target Tracking"
 
+  # Activa/desactiva la lógica de entry/exit (presencia asumida).
+  - platform: template
+    name: "Entry Exit Enabled"
+    id: entry_exit_enabled
+    icon: mdi:door
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+
 button:
   - platform: ld2450
     ld2450_id: ld2450_radar
@@ -187,3 +311,69 @@ button:
       name: "Radar Reiniciar"
     factory_reset:
       name: "Radar Reset Fábrica"
+
+# ===============================
+# ENTRY/EXIT — máquina de estados (corre cada 1 s)
+# ===============================
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          bool enabled = id(entry_exit_enabled).state;
+          bool present = id(ld2450_presence).state;
+
+          // Passthrough si está desactivado.
+          if (!enabled) {
+            id(ee_assumed) = present;
+            id(ee_present_prev) = present;
+            id(ee_assumed_since_ms) = 0;
+            return;
+          }
+
+          // Rectángulo de la entry zone (normalizado a min/max).
+          float ex_min = std::min(id(ez1x1).state, id(ez1x2).state);
+          float ex_max = std::max(id(ez1x1).state, id(ez1x2).state);
+          float ey_min = std::min(id(ez1y1).state, id(ez1y2).state);
+          float ey_max = std::max(id(ez1y1).state, id(ez1y2).state);
+
+          auto inEntry = [&](float x, float y) -> bool {
+            if (isnan(x) || isnan(y)) return false;
+            if (x == 0.0f && y == 0.0f) return false; // target inactivo
+            return (x >= ex_min && x <= ex_max && y >= ey_min && y <= ey_max);
+          };
+
+          bool anyInEntry =
+            inEntry(id(t1x).state, id(t1y).state) ||
+            inEntry(id(t2x).state, id(t2y).state) ||
+            inEntry(id(t3x).state, id(t3y).state);
+
+          if (present) {
+            // Hay alguien: ocupado y recordamos si está en la puerta.
+            id(ee_assumed) = true;
+            id(ee_last_in_entry) = anyInEntry;
+            id(ee_assumed_since_ms) = 0;
+          } else {
+            if (id(ee_present_prev)) {
+              // Acaba de desaparecer todo el mundo.
+              if (id(ee_last_in_entry)) {
+                // Su última posición fue la puerta -> salió -> sala vacía.
+                id(ee_assumed) = false;
+                id(ee_assumed_since_ms) = 0;
+              } else {
+                // Se perdió en medio del cuarto (probable persona quieta):
+                // mantenemos ocupado y arrancamos el timeout.
+                id(ee_assumed) = true;
+                id(ee_assumed_since_ms) = millis();
+              }
+            } else {
+              // Ya estaba ausente: respetar el timeout de presencia asumida.
+              if (id(ee_assumed) && id(ee_assumed_since_ms) > 0) {
+                uint32_t to_ms = (uint32_t)(id(assume_present_timeout).state * 1000.0);
+                if ((millis() - id(ee_assumed_since_ms)) >= to_ms) {
+                  id(ee_assumed) = false;
+                  id(ee_assumed_since_ms) = 0;
+                }
+              }
+            }
+          }
+          id(ee_present_prev) = present;

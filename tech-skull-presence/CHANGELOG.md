@@ -2,6 +2,25 @@
 
 All notable changes to this add-on. Versions follow the `version:` field in `config.yaml`.
 
+## 0.3.0 — Entry/Exit zones (assumed presence) for LD2450
+
+DIY entry/exit detection implemented in the LD2450 firmware (no native support).
+
+**Firmware (hp-02-lite + hp-02-lite-2, project v1.2.0):**
+- One **Entry Zone** rectangle (`entry_zone_1_x1/y1/x2/y2`) you draw over a doorway.
+- A 1 Hz state machine computes **assumed presence**: the room stays occupied when
+  a still person is lost mid-room, and is released when the last target is seen
+  leaving through the entry zone. New entities: `assumed_present`,
+  `assumed_present_remaining`, `assume_present_timeout`, `entry_exit_enabled`.
+- Added `id`s to `has_target` and target X/Y so the logic can read positions.
+
+**Add-on (`myumar_hp_lite` profile, schema 1.1):**
+- `entryZones: true`, `maxEntryZones: 1`. Entry zone + assumed-present entities
+  mapped so the existing Entry Zone UI and Assumed Present panel light up.
+
+⚠️ Needs on-device tuning (entry zone size, `assume_present_timeout`). Flash and
+validate on **one** lite first.
+
 ## 0.2.7 — Coverage toggle + Zone Mode in the wizard
 
 - Added a **"Device coverage (FoV)"** checkbox to the wizard's zone/placement step

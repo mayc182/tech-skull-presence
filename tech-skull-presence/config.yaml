@@ -1,5 +1,5 @@
 name: Tech Skull Presence
-version: 0.2.7
+version: 0.3.0
 slug: tech-skull-presence
 description: Visual configurator and dashboard for MYumar.HP_series DIY mmWave presence sensors (LD2410 + LD2450, optional SCD40/BH1750/WS2812/RTTTL buzzer).
 url: https://github.com/mayc182/tech-skull-presence/tree/main/tech-skull-presence
