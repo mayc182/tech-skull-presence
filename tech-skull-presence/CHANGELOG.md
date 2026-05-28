@@ -2,6 +2,19 @@
 
 All notable changes to this add-on. Versions follow the `version:` field in `config.yaml`.
 
+## 0.4.1 — Mount the environmental/controls dashboard (fix)
+
+- **Fix**: the CO2 / temperature / humidity / illuminance panel, the device
+  controls (No-Disturb, CO2 LED, **buzzer melody tester**) and the 1D distance-band
+  editor were built into `EP1Dashboard`, but that component was never rendered in
+  this fork — so none of them appeared. The Live view now renders `EP1Dashboard`
+  for **distance-only (LD2410) devices** (saladeestar / luz / niños), so all those
+  panels finally show. 2D devices (lite/LD2450) keep the tracking canvas.
+- Rebranded the dashboard header to "MYumar.HP_series".
+
+> To see them: open the **Live** view and select a room whose device is an LD2410
+> variant. The lite (LD2450) has no CO2/lux/buzzer, so it shows the tracking canvas.
+
 ## 0.4.0 — Floor-plan tracing template
 
 Upload a floor-plan image and trace your room over it (in **Room Builder**).

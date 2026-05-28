@@ -27,6 +27,7 @@ import { useDisplaySettings } from '../hooks/useDisplaySettings';
 import { useHeatmap } from '../hooks/useHeatmap';
 import { useIsMobileCanvas } from '../hooks/useMediaQuery';
 import { useDeviceMappings, useDeviceMapping } from '../contexts/DeviceMappingsContext';
+import { EP1Dashboard } from '../components/EP1Dashboard';
 import { getDeviceIconUrl } from '../utils/deviceIcon';
 import { resolveCoverageFov } from '../utils/coverage';
 import {
@@ -1037,7 +1038,19 @@ export const LiveTrackingPage: React.FC<LiveTrackingPageProps> = ({
         </div>
       )}
 
-      {!loading && selectedRoom && (
+      {/* Distance-only devices (LD2410: CO2/lux/buzzer + 1D bands) get the
+          EP1-style dashboard instead of the 2D tracking canvas. */}
+      {!loading && selectedRoom && selectedProfile?.capabilities?.distanceOnlyTracking && (
+        <div className="h-full w-full overflow-y-auto">
+          <EP1Dashboard
+            roomId={selectedRoom.id}
+            room={selectedRoom}
+            liveState={liveState ?? null}
+          />
+        </div>
+      )}
+
+      {!loading && selectedRoom && !selectedProfile?.capabilities?.distanceOnlyTracking && (
         <div
           className="h-full w-full overflow-hidden overscroll-contain touch-none"
           onWheelCapture={(e) => {

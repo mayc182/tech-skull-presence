@@ -96,7 +96,7 @@ export const EP1Dashboard: React.FC<EP1DashboardProps> = ({ roomId, room, liveSt
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-white mb-1">{room.name}</h1>
-          <p className="text-sm text-slate-400">Everything Presence One - Live Dashboard</p>
+          <p className="text-sm text-slate-400">MYumar.HP_series — Live Dashboard</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
