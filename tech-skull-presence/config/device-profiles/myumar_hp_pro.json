@@ -1,0 +1,135 @@
+{
+  "id": "myumar_hp_pro",
+  "schemaVersion": "1.0",
+  "label": "HP-Pro (LD2450 + polygon zones)",
+  "model": "HP_series",
+  "manufacturer": "MYumar",
+  "capabilities": {
+    "tracking": true,
+    "zones": true,
+    "exclusionZones": true,
+    "entryZones": false,
+    "polygonZones": true,
+    "distanceOnlyTracking": false,
+    "environmental": false,
+    "sensors": {
+      "mmwavePresence": true,
+      "pir": false,
+      "illuminance": false,
+      "temperature": false,
+      "humidity": false
+    }
+  },
+  "limits": {
+    "maxZones": 3,
+    "maxExclusionZones": 2,
+    "maxEntryZones": 0,
+    "maxTargets": 3,
+    "maxRangeMeters": 6,
+    "fieldOfViewDegrees": 120
+  },
+  "services": {},
+  "coverage": {
+    "presets": {
+      "ld2450": { "label": "LD2450 (120°, 6 m)", "horizontalFovDeg": 120, "verticalFovDeg": 60, "maxRangeMeters": 6 }
+    },
+    "defaultPresetId": "ld2450"
+  },
+  "entities": {
+    "presence": {
+      "template": "binary_sensor.${name}_occupancy",
+      "category": "sensor",
+      "subcategory": "presence",
+      "label": "Occupancy (filtered)",
+      "required": true
+    },
+    "rawPresence": {
+      "template": "binary_sensor.${name}_presence",
+      "category": "sensor",
+      "subcategory": "presence",
+      "label": "Raw Presence",
+      "required": false
+    },
+    "targetCount":     { "template": "sensor.${name}_presence_target_count", "category": "tracking", "property": "targetCount", "required": false },
+
+    "target1X":          { "template": "sensor.${name}_target_1_x",          "category": "tracking", "targetIndex": 1, "property": "x", "required": false },
+    "target1Y":          { "template": "sensor.${name}_target_1_y",          "category": "tracking", "targetIndex": 1, "property": "y", "required": false },
+    "target1Speed":      { "template": "sensor.${name}_target_1_speed",      "category": "tracking", "targetIndex": 1, "property": "speed", "required": false },
+    "target2X":          { "template": "sensor.${name}_target_2_x",          "category": "tracking", "targetIndex": 2, "property": "x", "required": false },
+    "target2Y":          { "template": "sensor.${name}_target_2_y",          "category": "tracking", "targetIndex": 2, "property": "y", "required": false },
+    "target2Speed":      { "template": "sensor.${name}_target_2_speed",      "category": "tracking", "targetIndex": 2, "property": "speed", "required": false },
+    "target3X":          { "template": "sensor.${name}_target_3_x",          "category": "tracking", "targetIndex": 3, "property": "x", "required": false },
+    "target3Y":          { "template": "sensor.${name}_target_3_y",          "category": "tracking", "targetIndex": 3, "property": "y", "required": false },
+    "target3Speed":      { "template": "sensor.${name}_target_3_speed",      "category": "tracking", "targetIndex": 3, "property": "speed", "required": false },
+
+    "polygonZonesEnabled": {
+      "template": "switch.${name}_polygon_zones",
+      "category": "setting",
+      "group": "Zones",
+      "label": "Polygon Zones",
+      "controlType": "switch",
+      "required": false
+    },
+
+    "polygonZone1": { "template": "text.${name}_polygon_zone_1", "category": "zone", "zoneType": "polygon", "zoneIndex": 1, "required": false },
+    "polygonZone2": { "template": "text.${name}_polygon_zone_2", "category": "zone", "zoneType": "polygon", "zoneIndex": 2, "required": false },
+    "polygonZone3": { "template": "text.${name}_polygon_zone_3", "category": "zone", "zoneType": "polygon", "zoneIndex": 3, "required": false },
+    "polygonZone4": { "template": "text.${name}_polygon_zone_4", "category": "zone", "zoneType": "polygon", "zoneIndex": 4, "required": false },
+
+    "polygonExclusion1": { "template": "text.${name}_polygon_exclusion_1", "category": "zone", "zoneType": "polygonExclusion", "zoneIndex": 1, "required": false },
+    "polygonExclusion2": { "template": "text.${name}_polygon_exclusion_2", "category": "zone", "zoneType": "polygonExclusion", "zoneIndex": 2, "required": false },
+
+    "zone1Occupancy": { "template": "binary_sensor.${name}_zone_1_occupancy", "category": "sensor", "subcategory": "zoneOccupancy", "label": "Zone 1", "required": false },
+    "zone2Occupancy": { "template": "binary_sensor.${name}_zone_2_occupancy", "category": "sensor", "subcategory": "zoneOccupancy", "label": "Zone 2", "required": false },
+    "zone3Occupancy": { "template": "binary_sensor.${name}_zone_3_occupancy", "category": "sensor", "subcategory": "zoneOccupancy", "label": "Zone 3", "required": false },
+    "zone4Occupancy": { "template": "binary_sensor.${name}_zone_4_occupancy", "category": "sensor", "subcategory": "zoneOccupancy", "label": "Zone 4", "required": false },
+
+    "timeout": {
+      "template": "number.${name}_timeout",
+      "category": "setting",
+      "group": "Radar",
+      "label": "Detection Timeout",
+      "controlType": "number",
+      "min": 0, "max": 600, "step": 1, "unit": "s",
+      "required": false
+    },
+    "multiTargetTracking": {
+      "template": "switch.${name}_radar_multi_target_tracking",
+      "category": "setting",
+      "group": "Tracking",
+      "label": "Multi-Target Tracking",
+      "controlType": "switch",
+      "required": false
+    },
+    "radarBluetooth": {
+      "template": "switch.${name}_radar_bluetooth",
+      "category": "setting",
+      "group": "Advanced",
+      "label": "Radar Bluetooth",
+      "controlType": "switch",
+      "required": false
+    }
+  },
+  "entityMap": {
+    "presenceEntity": "binary_sensor.${name}_occupancy",
+    "targetCountEntity": "sensor.${name}_presence_target_count",
+    "trackingTargetCountEntity": "sensor.${name}_presence_target_count",
+    "polygonZonesEnabledEntity": "switch.${name}_polygon_zones",
+    "polygonZoneEntities": {
+      "zone1": "text.${name}_polygon_zone_1",
+      "zone2": "text.${name}_polygon_zone_2",
+      "zone3": "text.${name}_polygon_zone_3",
+      "zone4": "text.${name}_polygon_zone_4"
+    },
+    "polygonExclusionEntities": {
+      "exclusion1": "text.${name}_polygon_exclusion_1",
+      "exclusion2": "text.${name}_polygon_exclusion_2"
+    },
+    "settingsEntities": {
+      "timeout": "number.${name}_timeout",
+      "polygonZonesEnabled": "switch.${name}_polygon_zones",
+      "multiTargetTracking": "switch.${name}_radar_multi_target_tracking",
+      "radarBluetooth": "switch.${name}_radar_bluetooth"
+    }
+  }
+}

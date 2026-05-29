@@ -2,6 +2,31 @@
 
 All notable changes to this add-on. Versions follow the `version:` field in `config.yaml`.
 
+## 0.5.0 — Pro phase: software polygon zones (EP-Pro class)
+
+Turns one LD2450 into an "EP-Pro": arbitrary **polygon** detection/exclusion zones
+computed in firmware from the raw target X/Y — overcoming the LD2450's native
+limit of 3 axis-aligned zones + single global mode.
+
+- **New profile** `myumar_hp_pro`: `polygonZones: true`, 4 detection + 2 exclusion
+  polygons, per-zone occupancy sensors, filtered occupancy. Wires to the add-on's
+  existing polygon editor (polygon text entities + occupancy).
+- **New firmware** `firmware/hp-02-pro.yaml` (for the lite-2 board, project v2.0.0):
+  - `text` entities `polygon_zone_1..4` + `polygon_exclusion_1..2` (the add-on
+    writes `"x1:y1;x2:y2;..."` mm strings here).
+  - A 1 Hz engine: parses the polygons, runs **ray-casting point-in-polygon** for
+    each of the 3 targets, sets per-zone occupancy and a **filtered presence**
+    (inside a detection polygon AND not inside an exclusion polygon).
+  - `Polygon Zones` switch to enable/disable the software engine (off = raw presence).
+  - Per-zone mode is implicit: a polygon drawn as "exclusion" lands in a different
+    text entity, so you CAN mix detect-here / ignore-there — the thing the native
+    LD2450 couldn't do.
+
+⚠️ Most advanced firmware yet and **untested from the build host** — flash on the
+lite-2 board (it becomes `hp-02-pro`), expect to iterate. Reuses the lite-2 secrets.
+
+
+
 ## 0.4.4 — Comfort panel rounding + hardware BOM
 
 - **Fix**: "Feels Like" no longer shows a raw float (e.g. 30.2951564788818°C) —

@@ -1,0 +1,348 @@
+esphome:
+  name: hp-02-pro
+  friendly_name: HP-02_Pro
+  project:
+    name: "MYumar.HP_series"
+    version: "2.0.0"
+
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: arduino
+
+api:
+  encryption:
+    key: !secret api_key_lite_2
+
+ota:
+  - platform: esphome
+    password: !secret ota_password_lite_2
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # ESP32-C3 de este board: TX reducida + sin power save (ver lite-2).
+  output_power: 8.5dB
+  power_save_mode: none
+  ap:
+    ssid: "Hp-02-Pro Fallback Hotspot"
+    password: !secret wifi_password_ap
+
+captive_portal:
+
+web_server:
+  port: 80
+  include_internal: true
+
+logger:
+  level: DEBUG
+  hardware_uart: USB_SERIAL_JTAG
+
+uart:
+  - id: uart_ld2450
+    tx_pin: 21
+    rx_pin: 20
+    baud_rate: 256000
+    rx_buffer_size: 2048
+    parity: NONE
+    stop_bits: 1
+
+ld2450:
+  id: ld2450_radar
+  uart_id: uart_ld2450
+
+# ===============================
+# GLOBALS — polygon zone occupancy (computed in software from target X/Y)
+# ===============================
+globals:
+  - id: zocc1
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: zocc2
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: zocc3
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: zocc4
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: pro_present
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+
+binary_sensor:
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    has_target:
+      name: Presence
+      id: ld2450_presence
+    has_moving_target:
+      name: Moving Target
+    has_still_target:
+      name: Still Target
+
+  # Occupancy filtrada por polígonos (detección menos exclusión).
+  - platform: template
+    name: "Occupancy"
+    id: pro_occupancy
+    device_class: occupancy
+    icon: mdi:home-account
+    lambda: 'return id(pro_present);'
+
+  - platform: template
+    name: "Zone 1 Occupancy"
+    device_class: occupancy
+    lambda: 'return id(zocc1);'
+  - platform: template
+    name: "Zone 2 Occupancy"
+    device_class: occupancy
+    lambda: 'return id(zocc2);'
+  - platform: template
+    name: "Zone 3 Occupancy"
+    device_class: occupancy
+    lambda: 'return id(zocc3);'
+  - platform: template
+    name: "Zone 4 Occupancy"
+    device_class: occupancy
+    lambda: 'return id(zocc4);'
+
+sensor:
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    target_count:
+      name: Presence Target Count
+    still_target_count:
+      name: Still Target Count
+    moving_target_count:
+      name: Moving Target Count
+    target_1:
+      x: { name: Target-1 X, id: t1x }
+      y: { name: Target-1 Y, id: t1y }
+      speed: { name: Target-1 Speed }
+      angle: { name: Target-1 Angle }
+      distance: { name: Target-1 Distance }
+      resolution: { name: Target-1 Resolution }
+    target_2:
+      x: { name: Target-2 X, id: t2x }
+      y: { name: Target-2 Y, id: t2y }
+      speed: { name: Target-2 Speed }
+      angle: { name: Target-2 Angle }
+      distance: { name: Target-2 Distance }
+      resolution: { name: Target-2 Resolution }
+    target_3:
+      x: { name: Target-3 X, id: t3x }
+      y: { name: Target-3 Y, id: t3y }
+      speed: { name: Target-3 Speed }
+      angle: { name: Target-3 Angle }
+      distance: { name: Target-3 Distance }
+      resolution: { name: Target-3 Resolution }
+
+text_sensor:
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    version:
+      name: "LD2450 Firmware"
+    mac_address:
+      name: "LD2450 BT MAC"
+
+# ===============================
+# POLYGON ZONES — text entities (the add-on writes "x1:y1;x2:y2;..." in mm)
+# ===============================
+text:
+  - platform: template
+    name: "Polygon Zone 1"
+    id: pz1
+    optimistic: true
+    min_length: 0
+    max_length: 255
+    mode: text
+    restore_value: true
+    entity_category: config
+  - platform: template
+    name: "Polygon Zone 2"
+    id: pz2
+    optimistic: true
+    min_length: 0
+    max_length: 255
+    mode: text
+    restore_value: true
+    entity_category: config
+  - platform: template
+    name: "Polygon Zone 3"
+    id: pz3
+    optimistic: true
+    min_length: 0
+    max_length: 255
+    mode: text
+    restore_value: true
+    entity_category: config
+  - platform: template
+    name: "Polygon Zone 4"
+    id: pz4
+    optimistic: true
+    min_length: 0
+    max_length: 255
+    mode: text
+    restore_value: true
+    entity_category: config
+  - platform: template
+    name: "Polygon Exclusion 1"
+    id: px1
+    optimistic: true
+    min_length: 0
+    max_length: 255
+    mode: text
+    restore_value: true
+    entity_category: config
+  - platform: template
+    name: "Polygon Exclusion 2"
+    id: px2
+    optimistic: true
+    min_length: 0
+    max_length: 255
+    mode: text
+    restore_value: true
+    entity_category: config
+
+number:
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    presence_timeout:
+      name: "Timeout"
+
+select:
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    baud_rate:
+      name: "Radar Baud Rate"
+    zone_type:
+      name: "Radar Modo Zonas"
+
+switch:
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    bluetooth:
+      name: "Radar Bluetooth"
+    multi_target:
+      name: "Radar Multi Target Tracking"
+
+  # Habilita el modo polígono (cálculo en software). Si se apaga, occupancy = has_target.
+  - platform: template
+    name: "Polygon Zones"
+    id: polygon_zones_sw
+    icon: mdi:vector-polygon
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+
+button:
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    restart:
+      name: "Radar Reiniciar"
+    factory_reset:
+      name: "Radar Reset Fábrica"
+
+# ===============================
+# POLYGON ENGINE — corre cada 1 s
+# Parsea los polígonos (texto), hace point-in-polygon (ray casting) sobre cada
+# target, calcula ocupación por zona y la presencia filtrada (detección - exclusión).
+# ===============================
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          bool polyEnabled = id(polygon_zones_sw).state;
+          bool raw = id(ld2450_presence).state;
+
+          // Modo desactivado: passthrough a la presencia cruda del radar.
+          if (!polyEnabled) {
+            id(pro_present) = raw;
+            id(zocc1) = false; id(zocc2) = false; id(zocc3) = false; id(zocc4) = false;
+            return;
+          }
+
+          // Parser de "x1:y1;x2:y2;..." -> vector de vértices (mm).
+          auto parse = [](const std::string &s) {
+            std::vector<std::pair<float,float>> v;
+            size_t i = 0;
+            while (i < s.size()) {
+              size_t semi = s.find(';', i);
+              std::string pair = (semi == std::string::npos) ? s.substr(i) : s.substr(i, semi - i);
+              size_t colon = pair.find(':');
+              if (colon != std::string::npos) {
+                float x = atof(pair.substr(0, colon).c_str());
+                float y = atof(pair.substr(colon + 1).c_str());
+                v.push_back(std::make_pair(x, y));
+              }
+              if (semi == std::string::npos) break;
+              i = semi + 1;
+            }
+            return v;
+          };
+
+          // Ray casting: ¿(px,py) dentro del polígono?
+          auto pip = [](float px, float py, const std::vector<std::pair<float,float>> &poly) {
+            int n = poly.size();
+            if (n < 3) return false;
+            bool inside = false;
+            for (int a = 0, b = n - 1; a < n; b = a++) {
+              float xi = poly[a].first, yi = poly[a].second;
+              float xj = poly[b].first, yj = poly[b].second;
+              if (((yi > py) != (yj > py)) &&
+                  (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) {
+                inside = !inside;
+              }
+            }
+            return inside;
+          };
+
+          // Targets activos (x/y válidos y no (0,0)).
+          float tx[3] = { id(t1x).state, id(t2x).state, id(t3x).state };
+          float ty[3] = { id(t1y).state, id(t2y).state, id(t3y).state };
+          bool act[3];
+          for (int k = 0; k < 3; k++) {
+            act[k] = !(std::isnan(tx[k]) || std::isnan(ty[k])) && !(tx[k] == 0.0f && ty[k] == 0.0f);
+          }
+
+          std::vector<std::pair<float,float>> dz[4] = {
+            parse(id(pz1).state), parse(id(pz2).state), parse(id(pz3).state), parse(id(pz4).state)
+          };
+          std::vector<std::pair<float,float>> xz[2] = {
+            parse(id(px1).state), parse(id(px2).state)
+          };
+
+          auto excluded = [&](float x, float y) {
+            for (int e = 0; e < 2; e++) if (pip(x, y, xz[e])) return true;
+            return false;
+          };
+
+          bool occ[4] = { false, false, false, false };
+          bool anyDetect = dz[0].size() >= 3 || dz[1].size() >= 3 || dz[2].size() >= 3 || dz[3].size() >= 3;
+          bool present = false;
+
+          for (int z = 0; z < 4; z++) {
+            for (int k = 0; k < 3; k++) {
+              if (!act[k]) continue;
+              if (pip(tx[k], ty[k], dz[z]) && !excluded(tx[k], ty[k])) {
+                occ[z] = true;
+                present = true;
+              }
+            }
+          }
+
+          // Sin polígonos de detección definidos: presente si hay algún target
+          // activo fuera de las zonas de exclusión.
+          if (!anyDetect) {
+            for (int k = 0; k < 3; k++) {
+              if (act[k] && !excluded(tx[k], ty[k])) { present = true; break; }
+            }
+          }
+
+          id(zocc1) = occ[0]; id(zocc2) = occ[1]; id(zocc3) = occ[2]; id(zocc4) = occ[3];
+          id(pro_present) = present;
