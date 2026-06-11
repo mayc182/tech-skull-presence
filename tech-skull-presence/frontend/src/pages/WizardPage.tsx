@@ -2827,7 +2827,7 @@ export const WizardPage: React.FC<WizardPageProps> = ({
               <h3 className="text-lg font-bold text-white">Select your device</h3>
             </div>
             <p className="text-sm text-slate-400">
-              Which Everything Presence device do you want to setup?
+              Which HP-series device do you want to setup?
             </p>
           </div>
           {devices.length === 0 && (

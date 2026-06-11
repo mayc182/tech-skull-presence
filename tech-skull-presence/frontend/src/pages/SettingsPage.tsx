@@ -329,7 +329,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, onRoomDelete
     const exportData = {
       ...room,
       exportedAt: new Date().toISOString(),
-      exportedFrom: 'Zone Configurator v1.0'
+      exportedFrom: 'Tech Skull Presence'
     };
 
     // Convert to JSON and create a downloadable file
@@ -364,7 +364,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, onRoomDelete
     const backupData = {
       rooms: rooms,
       exportedAt: new Date().toISOString(),
-      exportedFrom: 'Zone Configurator v1.0',
+      exportedFrom: 'Tech Skull Presence',
       roomCount: rooms.length,
     };
 
@@ -1041,7 +1041,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, onRoomDelete
                       </option>
                     ))}
                   </select>
-                  <p className="mt-1 text-xs text-slate-500">Only Everything Presence devices are listed.</p>
+                  <p className="mt-1 text-xs text-slate-500">Only MYumar.HP_series devices are listed.</p>
                 </div>
                 <div className="rounded-lg border border-slate-700/60 bg-slate-800/40 p-3 text-xs text-slate-300">
                   <div className="flex items-center justify-between">
@@ -1453,7 +1453,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, onRoomDelete
                 <div className="rounded-xl border border-slate-700/50 bg-slate-900/50 p-4 sm:p-6">
                   <h2 className="mb-4 text-lg font-semibold text-white">Firmware Updates</h2>
                   <p className="mb-4 text-sm text-slate-400">
-                    Update your Everything Presence devices with firmware downloaded through this local proxy.
+                    Update your HP-series devices with firmware downloaded through this local proxy.
                     This helps ESP devices that have trouble with HTTPS due to memory constraints.
                   </p>
                   <FirmwareUpdateSection

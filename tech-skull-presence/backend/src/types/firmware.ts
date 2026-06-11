@@ -124,10 +124,9 @@ export interface ValidationIssue {
 }
 
 /**
- * Default firmware index URLs for each product
+ * Default firmware index URLs per product. HP-series firmware is flashed via
+ * ESPHome directly, so no hosted index exists — the map is intentionally
+ * empty (the inherited updater subsystem no-ops without an index URL).
+ * Populate with your own hosted index if you ever publish HP firmware builds.
  */
-export const DEFAULT_FIRMWARE_INDEX_URLS: Record<string, string> = {
-  'everything-presence-one': 'https://everythingsmarthome.github.io/everything-presence-one/firmware-index.json',
-  'everything-presence-lite': 'https://everythingsmarthome.github.io/everything-presence-lite/firmware-index.json',
-  'everything-presence-pro': 'https://everythingsmarthome.github.io/everything-presence-pro/firmware-index.json',
-};
+export const DEFAULT_FIRMWARE_INDEX_URLS: Record<string, string> = {};

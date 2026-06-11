@@ -2,6 +2,26 @@
 
 All notable changes to this add-on. Versions follow the `version:` field in `config.yaml`.
 
+## 0.5.2 — De-brand sweep (fork identity)
+
+Removed the remaining upstream traces from everything user-visible:
+
+- Browser tab title → **Tech Skull Presence** (was "Everything Presence Zone Configurator").
+- Wizard & Settings strings now say **HP-series / MYumar.HP_series** devices.
+- Room export files now stamp `exportedFrom: "Tech Skull Presence"`.
+- Backend startup log renamed.
+- localStorage keys rebranded (`tech-skull-presence-*`) — **note:** saved theme and
+  display toggles reset once; this also flushes the stale upstream-keyed setting
+  that kept the FoV coverage cone hidden.
+- **Neutralized the upstream firmware index URLs** — the inherited (hidden) EP
+  firmware-update subsystem no longer points at everythingsmarthome.github.io;
+  the map is empty and every consumer degrades gracefully.
+
+Deliberate attribution to the original project remains in README/CHANGELOG/DOCS
+credits. Internal identifiers inside the dead firmware-update subsystem
+(`FirmwareUpdateSection.tsx`, `firmwareService.ts`) still reference EP models —
+hidden from the UI; full excision is tracked as future cleanup.
+
 ## 0.5.1 — CI + two audit fixes
 
 - **Fix**: zone occupancy now reaches the live state for **distance-only (LD2410)**

@@ -95,7 +95,7 @@ const start = async () => {
           readTransport: activeTransport,
           writeTransport: 'rest',
         },
-        'Zone Configurator backend started',
+        'Tech Skull Presence backend started',
       );
     });
   } catch (error) {

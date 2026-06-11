@@ -373,7 +373,7 @@ export interface LiveState {
   config?: EP1Config;
 }
 
-// Everything Presence One (EP1) specific types
+// Distance-only dashboard types (HP LD2410 variants; inherited EP1 naming)
 export type EP1Mode = 'Presence Detection' | 'Distance and Speed';
 
 export interface EP1EnvironmentalData {

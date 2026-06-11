@@ -21,7 +21,9 @@ export interface DisplaySettings {
   heatmapThreshold: number;
 }
 
-const STORAGE_KEY = 'everything-presence-zone-configurator-display-settings';
+// Fork-branded key. Renaming also flushes stale settings saved under the
+// upstream key (e.g. the old showDeviceRadar:false that hid the FoV cone).
+const STORAGE_KEY = 'tech-skull-presence-display-settings';
 
 const defaultSettings: DisplaySettings = {
   showWalls: true,

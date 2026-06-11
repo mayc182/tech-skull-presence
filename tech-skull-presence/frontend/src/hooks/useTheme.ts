@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 export type ThemeMode = 'light' | 'dark' | 'auto';
 export type ResolvedTheme = 'light' | 'dark';
 
-const STORAGE_KEY = 'everything-presence-zone-configurator-theme';
+const STORAGE_KEY = 'tech-skull-presence-theme';
 
 const getSystemTheme = (): ResolvedTheme => {
   if (typeof window !== 'undefined' && window.matchMedia) {
