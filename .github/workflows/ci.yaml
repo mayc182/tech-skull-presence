@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  addon-build:
+    name: Add-on build (backend + frontend)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tech-skull-presence
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: tech-skull-presence/package-lock.json
+      - name: Install (mirrors Dockerfile)
+        run: npm ci --include=dev
+      - name: Build workspaces
+        run: npm run build --workspaces
+      - name: Typecheck frontend (vite build does not typecheck)
+        run: npx tsc -p frontend/tsconfig.json --noEmit
+
+  firmware-validate:
+    name: Validate all firmware configs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install ESPHome (pinned to the version used on the HA host)
+        run: pip install esphome==2026.5.1
+      - name: Create CI secrets
+        run: |
+          KEY=$(python -c "import base64; print(base64.b64encode(b'0'*32).decode())")
+          cat > firmware/secrets.yaml <<EOF
+          wifi_ssid: "ci-ssid"
+          wifi_password: "ci-password"
+          wifi_password_ap: "ci-appassword"
+          api_key_saladeestar: "$KEY"
+          api_key_lite: "$KEY"
+          api_key_lite_2: "$KEY"
+          api_key_luz: "$KEY"
+          api_key_mini: "$KEY"
+          api_key_ninos: "$KEY"
+          ota_password_saladeestar: "cipassword"
+          ota_password_lite: "cipassword"
+          ota_password_lite_2: "cipassword"
+          ota_password_luz: "cipassword"
+          ota_password_mini: "cipassword"
+          ota_password_ninos: "cipassword"
+          EOF
+      - name: esphome config (schema validation)
+        run: |
+          status=0
+          for f in firmware/hp-*.yaml; do
+            echo "::group::$f"
+            esphome config "$f" > /dev/null || status=1
+            echo "::endgroup::"
+          done
+          exit $status
+
+  firmware-compile:
+    name: Compile ${{ matrix.firmware }}
+    runs-on: ubuntu-latest
+    # Full compile catches C++ errors in lambdas that `esphome config` cannot.
+    # Limited to the lambda-heavy firmwares to keep CI time reasonable.
+    strategy:
+      fail-fast: false
+      matrix:
+        firmware: [hp-02-pro, hp-02-lite, hp-01-ninos]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-esphome-2026.5.1
+      - name: Install ESPHome
+        run: pip install esphome==2026.5.1
+      - name: Create CI secrets
+        run: |
+          KEY=$(python -c "import base64; print(base64.b64encode(b'0'*32).decode())")
+          cat > firmware/secrets.yaml <<EOF
+          wifi_ssid: "ci-ssid"
+          wifi_password: "ci-password"
+          wifi_password_ap: "ci-appassword"
+          api_key_saladeestar: "$KEY"
+          api_key_lite: "$KEY"
+          api_key_lite_2: "$KEY"
+          api_key_luz: "$KEY"
+          api_key_mini: "$KEY"
+          api_key_ninos: "$KEY"
+          ota_password_saladeestar: "cipassword"
+          ota_password_lite: "cipassword"
+          ota_password_lite_2: "cipassword"
+          ota_password_luz: "cipassword"
+          ota_password_mini: "cipassword"
+          ota_password_ninos: "cipassword"
+          EOF
+      - name: esphome compile
+        run: esphome compile firmware/${{ matrix.firmware }}.yaml

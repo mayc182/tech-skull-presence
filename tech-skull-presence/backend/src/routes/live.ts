@@ -347,8 +347,10 @@ export function createLiveRouter(
         liveState.config = config;
       }
 
-      // Zone occupancy states (EPL/EPP) from confirmed mappings only.
-      if (capabilities?.zones) {
+      // Zone occupancy states from confirmed mappings only. Also runs for
+      // distance-only devices (HP LD2410), whose profiles set zones:false but
+      // expose Zone N Occupancy sensors that drive the Distance Bands panel.
+      if (capabilities?.zones || capabilities?.distanceOnlyTracking) {
         for (let i = 1; i <= 4; i++) {
           const mappingKey = `zone${i}Occupancy`;
           let entityId: string | null = null;

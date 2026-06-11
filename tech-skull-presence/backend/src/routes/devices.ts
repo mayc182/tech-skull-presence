@@ -30,6 +30,16 @@ const mirrorZoneX = <T extends { x: number; width: number }>(zone: T): T => ({
 const deviceMirrorX = (deviceId: string): boolean =>
   deviceMappingStorage.getMapping(deviceId)?.mirrorX === true;
 
+/**
+ * Mirror a polygon zone across the X axis (negate every vertex X). Involution,
+ * so the same transform applies on both read and write — keeps polygons
+ * consistent with the mirrored live targets on flipped-mount radars.
+ */
+const mirrorPolygonX = (zone: ZonePolygon): ZonePolygon => ({
+  ...zone,
+  vertices: zone.vertices.map((v) => ({ ...v, x: -v.x })),
+});
+
 export const createDevicesRouter = (deps: DevicesRouterDependencies): Router => {
   const router = Router();
   const { readTransport, writeClient, profileLoader } = deps;
@@ -845,7 +855,10 @@ export const createDevicesRouter = (deps: DevicesRouterDependencies): Router => 
     }
 
     try {
-      const zones = await zoneReader.readPolygonZones(entityMap, entityNamePrefix as string, entityMappings, deviceId);
+      let zones = await zoneReader.readPolygonZones(entityMap, entityNamePrefix as string, entityMappings, deviceId);
+      if (deviceMirrorX(deviceId)) {
+        zones = zones.map(mirrorPolygonX);
+      }
       return res.json({ zones });
     } catch (error) {
       logger.error({ error }, 'Failed to read polygon zones');
@@ -983,7 +996,8 @@ export const createDevicesRouter = (deps: DevicesRouterDependencies): Router => 
         }
       }
 
-      const result = await zoneWriter.applyPolygonZones(entityMap, zones ?? [], entityNamePrefix, entityMappings, deviceId);
+      const zonesToWrite = deviceMirrorX(deviceId) ? (zones ?? []).map(mirrorPolygonX) : (zones ?? []);
+      const result = await zoneWriter.applyPolygonZones(entityMap, zonesToWrite, entityNamePrefix, entityMappings, deviceId);
       const combinedWarnings = [...warnings, ...result.failures];
       return res.json({ ok: result.ok, warnings: combinedWarnings });
     } catch (error) {

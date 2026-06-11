@@ -2,6 +2,20 @@
 
 All notable changes to this add-on. Versions follow the `version:` field in `config.yaml`.
 
+## 0.5.1 — CI + two audit fixes
+
+- **Fix**: zone occupancy now reaches the live state for **distance-only (LD2410)**
+  devices — their profiles set `zones: false`, which skipped the read entirely, so
+  the Distance Bands panel never highlighted the occupied band.
+- **Fix**: **Mirror X** now also applies to **polygon zones** (read and write).
+  Previously only rectangular zones were mirrored, so polygons on a flipped-mount
+  radar would land mirrored relative to the live targets.
+- **New: GitHub Actions CI** — every push now (a) builds the add-on (backend `tsc`
+  + frontend Vite build + frontend typecheck), (b) validates all 7 firmware YAMLs
+  with `esphome config`, and (c) **fully compiles** the three lambda-heavy
+  firmwares (hp-02-pro, hp-02-lite, hp-01-ninos) to catch C++ errors before any
+  flash attempt.
+
 ## 0.5.0 — Pro phase: software polygon zones (EP-Pro class)
 
 Turns one LD2450 into an "EP-Pro": arbitrary **polygon** detection/exclusion zones
