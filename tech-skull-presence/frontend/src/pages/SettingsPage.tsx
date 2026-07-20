@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { fetchRooms, deleteRoom, updateRoom, createRoom } from '../api/rooms';
+import { ingressAware } from '../api/client';
 import {
   fetchSettings,
   updateSettings,
@@ -50,6 +51,21 @@ const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, onRoomDeleted, onRoomUpdated }) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('rooms');
+  // Running add-on version (from the Supervisor). Shown as a badge so users can
+  // confirm which version is actually installed — HA's store page caches hard.
+  const [addonVersion, setAddonVersion] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(ingressAware('api/meta/version'))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled) setAddonVersion(d?.version ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [rooms, setRooms] = useState<RoomConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -780,6 +796,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack, onRoomDelete
             </button>
           )}
           <h1 className="text-2xl font-bold text-white">Settings</h1>
+          {addonVersion && (
+            <span
+              className="rounded-full border border-slate-700 bg-slate-800/60 px-2.5 py-1 text-xs font-semibold text-aqua-300"
+              title="Installed add-on version (live from the Supervisor)"
+            >
+              Tech Skull Presence v{addonVersion}
+            </span>
+          )}
         </div>
 
         {/* Tab Navigation */}

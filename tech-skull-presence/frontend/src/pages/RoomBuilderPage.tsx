@@ -208,24 +208,46 @@ export const RoomBuilderPage: React.FC<RoomBuilderPageProps> = ({
     if (!selectedRoom) return;
     const reader = new FileReader();
     reader.onload = () => {
-      const dataUrl = reader.result as string;
+      const original = reader.result as string;
       const img = new Image();
       img.onload = () => {
+        // Downscale + recompress before storing: the image is persisted as
+        // base64 inside rooms.json, so a raw photo would bloat every rooms
+        // read/write by megabytes. ~1500 px is plenty for tracing walls.
+        const MAX_PX = 1500;
+        const scale = Math.min(1, MAX_PX / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.max(1, Math.round(img.naturalWidth * scale));
+        const h = Math.max(1, Math.round(img.naturalHeight * scale));
+        let dataUrl = original;
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = '#ffffff'; // JPEG has no alpha; flatten on white
+            ctx.fillRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+            dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+          }
+        } catch {
+          /* keep the original if canvas processing fails */
+        }
         // Initial scale: span the image across ~ the current view width; calibrate after.
-        const mmPerPx = rangeMm / Math.max(1, img.naturalWidth);
-        const wMm = img.naturalWidth * mmPerPx;
-        const hMm = img.naturalHeight * mmPerPx;
+        const mmPerPx = rangeMm / Math.max(1, w);
+        const wMm = w * mmPerPx;
+        const hMm = h * mmPerPx;
         updateFloorPlan({
           dataUrl,
-          imgWpx: img.naturalWidth,
-          imgHpx: img.naturalHeight,
+          imgWpx: w,
+          imgHpx: h,
           mmPerPx,
           offsetXmm: -wMm / 2,
           offsetYmm: -hMm / 2,
           opacity: 0.5,
         });
       };
-      img.src = dataUrl;
+      img.src = original;
     };
     reader.readAsDataURL(file);
   }, [selectedRoom, rangeMm, updateFloorPlan]);
@@ -1319,6 +1341,30 @@ export const RoomBuilderPage: React.FC<RoomBuilderPageProps> = ({
                       >
                         {calibrating ? 'Click 2 points on the plan…' : 'Calibrate scale'}
                       </button>
+                      {/* Position nudge: move the image in 100 mm steps */}
+                      <div>
+                        <div className="mb-1 text-slate-400">Position (10 cm steps)</div>
+                        <div className="grid grid-cols-3 gap-1">
+                          <div />
+                          <button
+                            className="rounded-md border border-slate-600 bg-slate-800 py-1 transition hover:border-aqua-500"
+                            onClick={() => updateFloorPlan({ offsetYmm: (selectedRoom.floorPlan!.offsetYmm) - 100 })}
+                          >▲</button>
+                          <div />
+                          <button
+                            className="rounded-md border border-slate-600 bg-slate-800 py-1 transition hover:border-aqua-500"
+                            onClick={() => updateFloorPlan({ offsetXmm: (selectedRoom.floorPlan!.offsetXmm) - 100 })}
+                          >◀</button>
+                          <button
+                            className="rounded-md border border-slate-600 bg-slate-800 py-1 transition hover:border-aqua-500"
+                            onClick={() => updateFloorPlan({ offsetYmm: (selectedRoom.floorPlan!.offsetYmm) + 100 })}
+                          >▼</button>
+                          <button
+                            className="rounded-md border border-slate-600 bg-slate-800 py-1 transition hover:border-aqua-500"
+                            onClick={() => updateFloorPlan({ offsetXmm: (selectedRoom.floorPlan!.offsetXmm) + 100 })}
+                          >▶</button>
+                        </div>
+                      </div>
                       <div className="flex gap-2">
                         <button
                           className="flex-1 rounded-md border border-slate-600 bg-slate-800 px-2 py-1 transition hover:border-aqua-500"

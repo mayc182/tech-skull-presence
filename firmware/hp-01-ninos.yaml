@@ -3,7 +3,7 @@ esphome:
   friendly_name: HP-01-ninos
   project:
     name: "MYumar.HP_series"
-    version: "1.1.0"
+    version: "1.2.0"
 
 esp32:
   board: esp32-c3-devkitm-1
@@ -303,7 +303,7 @@ sensor:
 
         - if:
             condition:
-              lambda: 'return !id(no_disturb_switch).state && x <= 800 && id(co2_range_last) != 0;'
+              lambda: 'return id(buzzer_enabled_sw).state && !id(no_disturb_switch).state && x <= 800 && id(co2_range_last) != 0;'
             then:
               - globals.set:
                   id: co2_range_last
@@ -312,7 +312,7 @@ sensor:
 
         - if:
             condition:
-              lambda: 'return !id(no_disturb_switch).state && x > 800 && x <= 1000 && id(co2_range_last) != 1;'
+              lambda: 'return id(buzzer_enabled_sw).state && !id(no_disturb_switch).state && x > 800 && x <= 1000 && id(co2_range_last) != 1;'
             then:
               - globals.set:
                   id: co2_range_last
@@ -321,7 +321,7 @@ sensor:
 
         - if:
             condition:
-              lambda: 'return !id(no_disturb_switch).state && x > 1000 && x <= 1500 && id(co2_range_last) != 2;'
+              lambda: 'return id(buzzer_enabled_sw).state && !id(no_disturb_switch).state && x > 1000 && x <= 1500 && id(co2_range_last) != 2;'
             then:
               - globals.set:
                   id: co2_range_last
@@ -330,7 +330,7 @@ sensor:
 
         - if:
             condition:
-              lambda: 'return !id(no_disturb_switch).state && x > 1500 && x <= 2000 && id(co2_range_last) != 3;'
+              lambda: 'return id(buzzer_enabled_sw).state && !id(no_disturb_switch).state && x > 1500 && x <= 2000 && id(co2_range_last) != 3;'
             then:
               - globals.set:
                   id: co2_range_last
@@ -339,7 +339,7 @@ sensor:
 
         - if:
             condition:
-              lambda: 'return !id(no_disturb_switch).state && x > 2000 && id(co2_range_last) != 4;'
+              lambda: 'return id(buzzer_enabled_sw).state && !id(no_disturb_switch).state && x > 2000 && id(co2_range_last) != 4;'
             then:
               - globals.set:
                   id: co2_range_last
@@ -531,6 +531,17 @@ switch:
       name: "Engineering mode"
     bluetooth:
       name: "Control bluetooth"
+
+  # Habilita/deshabilita solo las melodias del buzzer (el LED sigue su logica).
+  # Tambien sirve de marcador unico para que el addon distinga este firmware
+  # del de saladeestar (identicos en lo demas) al autodetectar el perfil.
+  - platform: template
+    name: "Buzzer Enabled"
+    id: buzzer_enabled_sw
+    icon: "mdi:volume-high"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
 
   - platform: template
     name: "No Disturb Mode"

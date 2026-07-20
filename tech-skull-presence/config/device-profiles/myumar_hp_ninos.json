@@ -1,6 +1,6 @@
 {
   "id": "myumar_hp_ninos",
-  "schemaVersion": "1.1",
+  "schemaVersion": "1.2",
   "label": "HP-Ninos (LD2410 + SCD40 + LED + Buzzer)",
   "model": "HP_series",
   "manufacturer": "MYumar",
@@ -132,6 +132,15 @@
       "controlType": "switch",
       "required": false
     },
+    "buzzerEnabled": {
+      "template": "switch.${name}_buzzer_enabled",
+      "category": "setting",
+      "group": "UI",
+      "label": "Buzzer Melodies",
+      "controlType": "switch",
+      "description": "Unique to the Niños firmware — also lets profile auto-detection tell it apart from Saladeestar.",
+      "required": false
+    },
     "scd40TempOffset": {
       "template": "number.${name}_scd40_temperature_offset",
       "category": "setting",
@@ -203,6 +212,7 @@
     "settingsEntities": {
       "co2Led": "light.${name}_co2_led",
       "noDisturbMode": "switch.${name}_no_disturb_mode",
+      "buzzerEnabled": "switch.${name}_buzzer_enabled",
       "scd40TempOffset": "number.${name}_scd40_temperature_offset",
       "scd40HumidityOffset": "number.${name}_scd40_humidity_offset",
       "zone1EndDistance": "number.${name}_zone_1_end_distance",

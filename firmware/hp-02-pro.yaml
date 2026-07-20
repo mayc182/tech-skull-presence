@@ -3,7 +3,7 @@ esphome:
   friendly_name: HP-02_Pro
   project:
     name: "MYumar.HP_series"
-    version: "2.0.0"
+    version: "2.0.1"
 
 esp32:
   board: esp32-c3-devkitm-1
@@ -249,12 +249,14 @@ button:
       name: "Radar Reset Fábrica"
 
 # ===============================
-# POLYGON ENGINE — corre cada 1 s
+# POLYGON ENGINE — corre cada 500 ms
 # Parsea los polígonos (texto), hace point-in-polygon (ray casting) sobre cada
 # target, calcula ocupación por zona y la presencia filtrada (detección - exclusión).
+# 500 ms mantiene las automatizaciones de luz reactivas; el coste de CPU en el
+# C3 es despreciable (3 targets x 6 polígonos pequeños).
 # ===============================
 interval:
-  - interval: 1s
+  - interval: 500ms
     then:
       - lambda: |-
           bool polyEnabled = id(polygon_zones_sw).state;

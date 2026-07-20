@@ -58,6 +58,32 @@ export function createLiveRouter(
       // X-axis mirror for devices mounted flipped (negates target X + angle).
       const mirrorX = deviceMappingStorage.getMapping(deviceId)?.mirrorX === true;
 
+      // Prefetch every mapped entity state in ONE transport call. The state
+      // route used to issue ~30 sequential getState round-trips per poll;
+      // reading from this map cuts that to a single batched read. Entities
+      // not in the map (legacy resolution paths) fall back to per-entity reads.
+      let prefetched: Map<string, any> = new Map();
+      if (hasDeviceMapping) {
+        const flat = deviceMappingStorage.getMapping(deviceId)?.mappings ?? {};
+        const ids = Object.values(flat).filter((v): v is string => typeof v === 'string');
+        if (ids.length > 0) {
+          try {
+            prefetched = (await readTransport.getStates(ids)) as Map<string, any>;
+          } catch (err) {
+            logger.warn({ err, deviceId }, 'Batch state prefetch failed; falling back to per-entity reads');
+          }
+        }
+      }
+      const fetchState = async (entityId: string) => {
+        const hit = prefetched.get(entityId);
+        if (hit) return hit;
+        try {
+          return await readTransport.getState(entityId);
+        } catch {
+          return null;
+        }
+      };
+
       // Log warning if no mappings found
       if (!hasMappings) {
         logger.warn({ deviceId, profileId }, 'No device mappings found - entity resolution may fail');
@@ -109,13 +135,7 @@ export function createLiveRouter(
           entityId = EntityResolver.resolve(entityMappings, deviceName, mappingKey, template);
         }
         if (!entityId) return null;
-        try {
-          const state = await readTransport.getState(entityId);
-          return state;
-        } catch (err) {
-          // Entity might not exist
-          return null;
-        }
+        return fetchState(entityId);
       };
 
       const entityMap = profile.entityMap as any;
@@ -249,12 +269,7 @@ export function createLiveRouter(
             entityId = EntityResolver.resolveTargetEntity(entityMappings, deviceName, targetNum, property);
           }
           if (!entityId) return null;
-          try {
-            const state = await readTransport.getState(entityId);
-            return state;
-          } catch (err) {
-            return null;
-          }
+          return fetchState(entityId);
         };
 
         // Fetch up to 3 targets
@@ -362,7 +377,7 @@ export function createLiveRouter(
           }
           if (!entityId) continue;
 
-          const occupancyState = await readTransport.getState(entityId).catch(() => null);
+          const occupancyState = await fetchState(entityId);
           if (!occupancyState) continue;
 
           markAvailability(mappingKey, occupancyState);

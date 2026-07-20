@@ -2,6 +2,36 @@
 
 All notable changes to this add-on. Versions follow the `version:` field in `config.yaml`.
 
+## 0.5.3 — Optimization pass + GUI niceties
+
+**Performance**
+- **Live state reads batched**: the `/state` poll used to issue ~30 sequential
+  per-entity round-trips to Home Assistant; it now prefetches every mapped entity
+  in **one** transport call (legacy paths still fall back per-entity). Dashboards
+  refresh noticeably faster.
+- **Floor plans are compressed on upload** (max 1500 px, JPEG q0.8) before being
+  stored in `rooms.json` — megabyte photos no longer bloat every rooms read/write.
+
+**Firmware**
+- **hp-02-pro v2.0.1**: polygon engine now runs at **500 ms** (was 1 s) — snappier
+  zone occupancy for light automations; negligible CPU on the C3.
+- **hp-01-ninos v1.2.0**: new **"Buzzer Enabled"** switch that gates the CO2
+  melodies independently of No-Disturb (which also kills the LED). It doubles as
+  the marker that lets **profile auto-detection tell Niños apart from
+  Saladeestar** (they were entity-identical). Profile schema → 1.2 (re-sync after
+  flashing).
+
+**GUI**
+- **Version badge** in Settings: shows the *actually installed* add-on version,
+  fetched live from the Supervisor (`/api/meta/version`) — no more guessing when
+  the HA store page caches stale info.
+- **Floor plan position nudge**: arrow controls move the plan image in 10 cm steps
+  to fine-tune alignment after calibration.
+
+**Not changed on purpose**: lite-1 stays at 9600 baud — switching to 256000
+requires reconfiguring the radar chip first (factory reset via HA button, then
+flash with the new UART speed). Procedure documented; do it when convenient.
+
 ## 0.5.2 — De-brand sweep (fork identity)
 
 Removed the remaining upstream traces from everything user-visible:
